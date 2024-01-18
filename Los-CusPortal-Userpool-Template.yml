@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is to create Cognito userpool.
+Parameters:
+  EnvironmentType:
+    Description: Specify the environment name where you want to deploy the resources.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Description: >-
+      Specify the resource name prefix for naming convention as per the
+      project.Ex:Nds-Cync-Los.
+  FromEmail:
+    Type: String
+    Description: Provide the From email Id
+  Pretokengeneration:
+    Type: String
+    Description: provide the lambda function name
+  Realm:
+    Type: String
+    Description: Enter the name of the client 
+Resources:
+  CognitoUserPool:
+    Type: 'AWS::Cognito::UserPool'
+    Properties:
+      AccountRecoverySetting:
+         RecoveryMechanisms:
+           - Name: verified_email
+             Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: False
+        InviteMessageTemplate:
+             EmailMessage: "Hi {username}, Your Verification code is {####}"
+             EmailSubject: "Your Verification Code"       
+      UserPoolName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Realm}-UserPool'
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 1
+      Schema: 
+        - AttributeDataType: String
+          Mutable: false
+          Name: realm
+          StringAttributeConstraints:
+            MaxLength: 256
+            MinLength: 1
+      EmailConfiguration:
+        EmailSendingAccount: DEVELOPER
+        From: !Ref FromEmail
+        SourceArn: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}'
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      
+      LambdaConfig:
+        PreTokenGeneration: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Pretokengeneration}'
+  CognitoUserPoolResourceServer:
+    Type: 'AWS::Cognito::UserPoolResourceServer'
+    DependsOn:
+      - CognitoUserPool
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Identifier: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Api-ResourceServer'
+      Name: !Sub '${EnvironmentType}-Api-ResourceServer'
+      Scopes:
+        - ScopeName: !Sub ManageClients
+          ScopeDescription: Used by Internal Admin to register new Clients
+        - ScopeName: !Sub CustomizeData
+          ScopeDescription: Used by Clients to access data
+  CognitoUserPoolClientAdmin:
+    Type: 'AWS::Cognito::UserPoolClient'
+    DependsOn:
+      - CognitoUserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub '${EnvironmentType}-${Realm}-Api-AdminClient'
+      RefreshTokenValidity: 60
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      TokenValidityUnits:
+        RefreshToken: minutes
+        AccessToken: minutes
+        IdToken: minutes
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_CUSTOM_AUTH
+      PreventUserExistenceErrors: ENABLED
+  PreTokenGenerationLambdaInvocationPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Pretokengeneration}'
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt 
+        - CognitoUserPool
+        - Arn

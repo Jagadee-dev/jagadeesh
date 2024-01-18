@@ -1,0 +1,453 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'This cloudformation template creates Opensearch domain and its dependent resources.Version: 0.1, Description of change: Initial Version'
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "Security Group Inputs"
+        Parameters:
+          - VpcTrafficSgRequired
+          - OsSgIngressRules
+          - OsSgEgressRules
+          - AdditionalSgIds
+      - Label:
+          default: "Network Inputs"
+        Parameters:
+          - VpcId
+          - DbSubnetIds
+      - Label:
+          default: "Cluster Inputs"
+        Parameters:
+          - OpensearchDomainName
+          - TLSSecurityPolicy
+          - OsNodeType
+          - OsNodeCount
+          - DedicatedMasterEnable
+          - DedicatedMasterDeteails
+          - ZoneAwarenessEnable
+          - AZCount
+          - ClusterStorageInputs
+Parameters:
+  DbSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select the list of SubnetIDs which Opensearch domain will use.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Enter the VPC Id.
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  OpensearchDomainName:
+    Type: String
+    Description: Specify a name for the OpenSearch Service domain. Domain names must start with a lowercase letter and must be between 3 and 28 characters. Valid characters are a-z (lowercase only), 0-9, and ? (hyphen).
+  TLSSecurityPolicy:
+    Type: String
+    Description: Select the minimum TLS version required for traffic to the domain. Valid values are TLS 1.0 (default) or 1.2.
+    AllowedValues: ["Policy-Min-TLS-1-0-2019-07", "Policy-Min-TLS-1-2-2019-07"]
+  OsNodeType:
+    Type: String
+    Description: Specify the instance type for your data nodes.
+  OsNodeCount:  
+    Type: Number
+    Description: Specify the number of data nodes (instances) to use in the OpenSearch Service domain.
+  ResourceNamePrefix: 
+    Type: String
+    Description: Enter prefix for Resource Names
+  OsSgIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  OsSgEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'  
+  ServiceName:
+    Description: Micro service name
+    Type: String
+  DedicatedMasterEnable:
+    Type: String
+    Description: Specify whether to use a dedicated master node for the OpenSearch Service domain.
+    AllowedValues: ['true', 'false']
+  DedicatedMasterDeteails:
+    Type: CommaDelimitedList
+    Description: If DedicatedMasterEnable is set to true,specify the dedicated master details in the format DedicatedMasterType:DedicatedMasterCount. Else leave it blank.
+  ZoneAwarenessEnable:
+    Type: String
+    Description: Indicates to enable zone awareness for the OS. When you enable it, OS allocates the nodes and replica index shards that belong to a cluster across two AZs in the same region to prevent data loss and minimize downtime.
+    AllowedValues: ['true', 'false']
+  AZCount:  
+    Type: Number
+    Description: Specify the number of AZs only if ZoneAwarenessEnabled is true and enabled multiple Availability Zones (AZs).
+  ClusterStorageInputs:
+    Type: CommaDelimitedList
+    Description: '(Required)Specify the values in following format:VolumeSize,VolumeType,Iops,AutomatedSnapshotStartHour'
+  VpcTrafficSgRequired:
+    Type: String
+    Description: 'Enter true to create SecurityGroup for RedshiftCluster & false to use existing Dynamic Security Groups[Serverless & Vpn sg] which leaves Ingress & Egress Rules undisturbed.'
+    AllowedValues: ["true", "false"]
+  AdditionalSgIds:
+    Type: CommaDelimitedList
+    Description: 'Enter only 4 AdditionalSgIds if RedshiftVpcTrafficSgRequired is set to true else provide 5.'
+    Default: "None,None,None,None,None"
+Conditions:
+  IsNewSgRequired: !Equals [!Ref VpcTrafficSgRequired, true]
+  SGValue01: !Not [!Equals [!Select [0, !Ref AdditionalSgIds], "None"]]
+  SGValue02: !Not [!Equals [!Select [1, !Ref AdditionalSgIds], "None"]]
+  SGValue03: !Not [!Equals [!Select [2, !Ref AdditionalSgIds], "None"]]
+  SGValue04: !Not [!Equals [!Select [3, !Ref AdditionalSgIds], "None"]]
+  SGValue05: !Not [!Equals [!Select [4, !Ref AdditionalSgIds], "None"]]
+  
+  IsMultiAZ: !Equals [ !Ref ZoneAwarenessEnable, 'true']
+  IsDedicatedMasterEnabled: !Equals [ !Ref DedicatedMasterEnable, 'true'] 
+  
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref OsSgIngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ]]], "sg" ]
+  
+  Egress0Exist: !Equals [ !Select [ 0, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref OsSgEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 2, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ]]], "sg" ]
+Resources:
+  ElasticsearchDomain:
+    Type: 'AWS::OpenSearchService::Domain'
+    UpdatePolicy:
+      EnableVersionUpgrade: false
+    Properties:
+      DomainName:  !Ref OpensearchDomainName
+      Tags:
+        - Key: Name
+          Value: !Ref OpensearchDomainName
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-OS'
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+        TLSSecurityPolicy: !Ref TLSSecurityPolicy
+      AdvancedSecurityOptions:
+        Enabled: false
+        InternalUserDatabaseEnabled: false
+      EncryptionAtRestOptions:
+        Enabled: true
+        KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/es'
+      LogPublishingOptions:
+        ES_APPLICATION_LOGS:
+          CloudWatchLogsLogGroupArn: !GetAtt OpenSearchErrorLogGroup.Arn
+          Enabled: true
+      ClusterConfig:
+        InstanceCount: !Ref OsNodeCount
+        ZoneAwarenessEnabled: false
+        InstanceType:
+          Ref: OsNodeType
+        DedicatedMasterEnabled: !Ref DedicatedMasterEnable 
+        DedicatedMasterType: !If [IsDedicatedMasterEnabled, !Select [0, !Ref DedicatedMasterDeteails], !Ref 'AWS::NoValue']
+        DedicatedMasterCount: !If [IsDedicatedMasterEnabled, !Select [1, !Ref DedicatedMasterDeteails], !Ref 'AWS::NoValue']
+        ZoneAwarenessEnabled: !Ref ZoneAwarenessEnable
+        ZoneAwarenessConfig:
+         !If 
+          - IsMultiAZ
+          - AvailabilityZoneCount: !Ref AZCount
+          - !Ref 'AWS::NoValue'
+      EngineVersion: 'OpenSearch_1.0'
+      AccessPolicies:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'es:ESHttpGet'
+              - 'es:ESHttpPut'
+              - 'es:ESHttpPost'
+              - 'es:ESHttpHead'
+              - 'es:ESHttpDelete'
+            Principal: '*'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpensearchDomainName}/*'
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: !Select [ 0, !Ref ClusterStorageInputs ]
+        VolumeType: !Select [ 1, !Ref ClusterStorageInputs ]
+        Iops: !Select [ 2, !Ref ClusterStorageInputs ]
+      SnapshotOptions:
+        AutomatedSnapshotStartHour: !Select [ 3, !Ref ClusterStorageInputs ]
+      AdvancedOptions:
+        rest.action.multi.allow_explicit_index: true
+      VPCOptions:
+        SecurityGroupIds:
+        - !If 
+          - IsNewSgRequired
+          - !GetAtt OsElasticSearchSg.GroupId
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue01
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue02
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [4, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        SubnetIds: 
+        - !Select [0, !Ref DbSubnetIds]
+        - !If
+          - IsMultiAZ
+          - !Select [1, !Ref DbSubnetIds]
+          - !Ref 'AWS::NoValue'          
+  OSLogGroupPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OS-logs'
+      PolicyDocument: '{"Version": "2012-10-17","Statement":[{"Effect":"Allow","Principal": {"Service": ["es.amazonaws.com"]},"Action":["logs:*"],"Resource":"*"}]}'
+  OpenSearchAuditLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OpenSearch-Audit-LogGroup'
+      Tags:
+        - Key: Name
+          Value: !Sub >-
+            ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OpenSearch-Audit-logs
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-OS-Audit-logs'
+  OpenSearchErrorLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OpenSearch-Error-LogGroup'
+      Tags:
+        - Key: Name
+          Value: !Sub >-
+            ${ResourceNamePrefix}-${EnvironmentType}-OpenSearch-Error-logs
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-OS-Error-logs'
+  OsElasticSearchSg:
+    Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsNewSgRequired
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for the Open Search.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OpenSearch-SG'
+      Tags:
+        - Key: Name
+          Value: !Sub >-
+            ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-OpenSearch-SG'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-OS-SG'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref OsSgIngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref OsSgIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref OsSgEgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref OsSgEgressRules ] ] ] ]
+Outputs:
+  OSClusterSgId:
+    Value: !If [ IsNewSgRequired, !GetAtt OsElasticSearchSg.GroupId, '-' ]
+  OSClusterArn:
+    Value: !GetAtt ElasticsearchDomain.Arn
+  OSClusterDomainEndpoint:
+    Value: !GetAtt ElasticsearchDomain.DomainEndpoint
+  OSClusterDomainId:
+    Value: !GetAtt ElasticsearchDomain.Id

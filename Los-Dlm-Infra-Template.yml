@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  AWS cloudformation template to create DLM schedule for Ec2 servers
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups: 
+    - Label: 
+        default: "Naming Conventions"
+      Parameters: 
+      - ResourceNamePrefix
+      - EnvironmentType
+    - Label: 
+        default: "Dlm Policy Inputs"
+      Parameters: 
+      - CronExpression
+      - RetentionCount
+      - TargetTagValue
+      - ScheduleType
+      - DlmResourceType
+Parameters:
+  EnvironmentType:
+    Description: Specify the environment name where you want to deploy the resources.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Description: Specify the resource name prefix for naming convention as per the project.Ex:Nds-Cync-Los
+  CronExpression:
+    Description: Enter a valid cron expression. The schedule interval must be between 1 hour and 1 year eg cron(0 10 * * ? *) as per the eg run at 10:00 am (UTC) every day.
+    Type: String
+    AllowedPattern: cron\([^\n]{11,100}\)
+    Default: cron(0 * ? * * *)
+  RetentionCount:
+    Description: Specifies the retention rule for a lifecycle policy. You can retain ami/snapshots based on a count. Min val- 2 and max val - 10.
+    Type: Number
+    Default: 6
+  TargetTagValue:
+    Description: Enter single tag value that identifies targeted resources for this policy.
+    Type: String
+    Default: DLM-Daily
+  ScheduleType:
+    Description: Specify the name of the schedule type based on type of timings and resource like Daily-Ami, Weekly-Ami & Monthly-Ami or Daily-Snapshot, Weekly-Snapshot & Monthly-Snapshot.
+    Type: String
+  DlmResourceType:
+    Description: Enter the resource type for dlm.
+    Type: String
+    AllowedValues:
+      - INSTANCE
+      - VOLUME
+
+Mappings: 
+  ResourceType:
+    INSTANCE:  
+      Type: IMAGE_MANAGEMENT
+    VOLUME:  
+      Type: EBS_SNAPSHOT_MANAGEMENT
+Resources:
+  DlmLifecyclePolicy:
+    Type: 'AWS::DLM::LifecyclePolicy'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ScheduleType}-Dlm'
+        - Key: ApplicationRole
+          Value: !Sub '${EnvironmentType}-dlm-server-policy'
+      Description: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ScheduleType}-Lifecycle-Policy'
+      State: ENABLED
+      ExecutionRoleArn: !GetAtt DlmLifecyclePolicyRole.Arn
+      PolicyDetails:
+        ResourceTypes:
+           - !Ref DlmResourceType 
+        PolicyType: !FindInMap [ResourceType, !Ref DlmResourceType, Type]
+        Parameters:
+          NoReboot: 'true'
+        TargetTags:
+          - Key: Backup
+            Value: !Ref TargetTagValue
+        Schedules:
+          - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ScheduleType}-Dlm'
+            TagsToAdd:
+              - Key: Backup
+                Value: !Ref TargetTagValue
+            CreateRule:
+              CronExpression: !Ref CronExpression
+            RetainRule:
+              Count: !Ref RetentionCount
+            CopyTags: true
+  DlmLifecyclePolicyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ScheduleType}-Dlm-Role'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ScheduleType}-Dlm-Role'
+        - Key: ApplicationRole
+          Value: !Sub '${EnvironmentType}-${ScheduleType}-Dlm-Role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - dlm.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Dlm-Ec2-Plcy'
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeImageAttribute
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeSnapshots
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource:
+                  - 'arn:aws:ec2:*::snapshot/*'
+                  - 'arn:aws:ec2:*::image/*'
+              - Effect: Allow
+                Action:
+                  - ec2:ResetImageAttribute
+                  - ec2:DeregisterImage
+                  - ec2:CreateImage
+                  - ec2:ModifyImageAttribute
+                  - ec2:DeleteSnapshot
+                Resource: 
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*'
+                  - 'arn:aws:ec2:*::image/*'
+                  - 'arn:aws:ec2:*::snapshot/*'

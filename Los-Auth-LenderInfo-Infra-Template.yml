@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS Cloudformation template to store Lenderwise Okta values in Parameterstore Version 0.1. 
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Name your Environment Name according to need.
+  LenderName:
+     Type: String
+     Description: "Provide the Name of the lender."
+  IdpMetadataValue:
+     Type: String
+     Description: Provide the value for the IdpMetadata,the details can be collected from Auth service team.
+  OktaAppIdValue:
+     Type: String
+     Description: Provide the value for the OktaApp_Id,the details can be collected from Auth service team.
+  OktaTokenValue:
+     Type: String
+     Description: Provide the value for the OktaToken,the details can be collected from Auth service team.
+  OktaUrlValue:
+     Type: String
+     Description: Provide the value for the OktaUrl,the details can be collected from Auth service team.
+  SpMetadataValue:
+     Type: String
+     Description: Provide the value for the Sp Metadata,the details can be collected from Auth service team.
+  
+Resources:
+  IdpMetadataParameterStore:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Description: !Sub 'idp_metadata value is stored in this parameter for the lender name: ${LenderName}'
+      Name: !Sub '/${LenderName}/idp_metadata.xml'
+      Tier: Standard
+      Type: String
+      Value: !Ref IdpMetadataValue
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${LenderName}-IdpMetaData-Parm'
+        ApplicationRole: !Sub '${LenderName}-IdpMetaData-Parm'
+  OktaAppIdParameterStore:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Description: !Sub 'Okta APP ID value is stored in this parameter for the lender name: ${LenderName}'
+      Name: !Sub '/${LenderName}/okta/app_id'
+      Tier: Standard
+      Type: String
+      Value: !Ref OktaAppIdValue
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${LenderName}-OktaAppId-Parm'
+        ApplicationRole: !Sub '${LenderName}-OktaAppId-Parm'
+  OktaTokenParameterStore:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Description: !Sub 'Okta token value is stored in this parameter for the lender name: ${LenderName}' 
+      Name: !Sub '/${LenderName}/okta/token'
+      Tier: Standard
+      Type: String
+      Value: !Ref OktaTokenValue
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${LenderName}-OktaToken-Parm'
+        ApplicationRole: !Sub '${LenderName}-OktaToken-Parm'
+  OktaUrlParameterStore:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Description: !Sub 'Okta URL value is stored in this parameter for the lender name: ${LenderName}' 
+      Name: !Sub '/${LenderName}/okta/url'
+      Tier: Standard
+      Type: String
+      Value: !Ref OktaUrlValue
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${LenderName}-OktaUrl-Parm'
+        ApplicationRole: !Sub '${LenderName}-OktaUrl-Parm'
+  SpMetadataParameterStore:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Description: !Sub 'SP metadata value is stored in this parameter for the lender name: ${LenderName}'
+      Name: !Sub '/${LenderName}/sp_metadata.xml'
+      Tier: Standard
+      Type: String
+      Value: !Ref SpMetadataValue
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${LenderName}-spMeta-Parm'
+        ApplicationRole: !Sub '${LenderName}-SpMetaData-Parm'

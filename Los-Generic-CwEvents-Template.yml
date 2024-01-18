@@ -1,0 +1,444 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create CloudWatch Events Rule to trigger SSM Automation Document for restarting ECS Service/Tasks whenever the associated Secrets are rotated. Version 1.0
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "EventRule Inputs"
+        Parameters:
+          - CWEventRoleArn
+          - ECSForceDeploymentSsmD
+      - Label:
+          default: "CloudWatchEvent1 Inputs"
+        Parameters:
+          - EventInputs1
+          - SecretInputs1
+      - Label:
+          default: "CloudWatchEvent2 Inputs"
+        Parameters:
+          - EventInputs2
+          - SecretInputs2
+      - Label:
+          default: "CloudWatchEvent3 Inputs"
+        Parameters:
+          - EventInputs3
+          - SecretInputs3
+      - Label:
+          default: "CloudWatchEvent4 Inputs"
+        Parameters:
+          - EventInputs4
+          - SecretInputs4
+      - Label:
+          default: "CloudWatchEvent5 Inputs"
+        Parameters:
+          - EventInputs5
+          - SecretInputs5
+      - Label:
+          default: "CloudWatchEvent6 Inputs"
+        Parameters:
+          - EventInputs6
+          - SecretInputs6
+      - Label:
+          default: "CloudWatchEvent7 Inputs"
+        Parameters:
+          - EventInputs7
+          - SecretInputs7
+      - Label:
+          default: "CloudWatchEvent8 Inputs"
+        Parameters:
+          - EventInputs8
+          - SecretInputs8
+      - Label:
+          default: "CloudWatchEvent9 Inputs"
+        Parameters:
+          - EventInputs9
+          - SecretInputs9
+      - Label:
+          default: "CloudWatchEvent10 Inputs"
+        Parameters:
+          - EventInputs10
+          - SecretInputs10
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Enter environmenttype according to need.
+  ServiceName:
+    Type: String
+    Description: Enter ServiceName for resources being created.
+  CWEventRoleArn:
+    Type: String
+    Description: Enter the Amazon Resource Notation [ARN] of CloudWatch Event Role to provide sufficient permission for CWEvent to trigger SSM Automation Document.
+  ECSForceDeploymentSsmD:
+    Type: String
+    Description: Enter the Name of SSM Automation Document to be triggered by fetching CloudTrail Event.
+  EventInputs1:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment & Rotated Secret ARN to fetch CloudTrail Event. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs1:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs2:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs2:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs3:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs3:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs4:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs4:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs5:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs5:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs6:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs6:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs7:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs7:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs8:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs8:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs9:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs9:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+  EventInputs10:
+    Type: CommaDelimitedList
+    Description: Enter ECS ClusterName, ServiceName, TaskDefinitionName, Confirmation for Forcing NewDeployment. Enter true for new deployment & false to skip in the following format ClusterName,ServiceName,TaskDefinitionName,ForceNewDeployment ex- Los-Dev-Cluster,Los-Dev-Service,Los-Dev-TD,true.
+  SecretInputs10:
+    Type: CommaDelimitedList
+    Description: Enter Amazon Resource Name ARN of SecretManager to fetch CloudTrail event. Enter None if secrets are not to be passed. Provide inputs in the following format ex- aws:arn:secretsmanager:us-east-1:1234567890:<secret>,aws:arn:secretsmanager:us-east-1:1234567890:<secret>,....
+Conditions:
+  IsRule1Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs1]]]
+  IsRule2Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs2]]]
+  IsRule3Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs3]]]
+  IsRule4Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs4]]]
+  IsRule5Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs5]]]
+  IsRule6Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs6]]]
+  IsRule7Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs7]]]
+  IsRule8Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs8]]]
+  IsRule9Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs9]]]
+  IsRule10Required: !Not [!Equals ['None', !Select [0, !Ref EventInputs10]]]
+Resources:
+  CWEventsRule1:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule1Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs1], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs1]
+              ECSServicename: !Select [1, !Ref EventInputs1]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs1]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs1]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs1
+  CWEventsRule2:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule2Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs2], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs2]
+              ECSServicename: !Select [1, !Ref EventInputs2]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs2]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs2]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs2
+  CWEventsRule3:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule3Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs3], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs3]
+              ECSServicename: !Select [1, !Ref EventInputs3]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs3]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs3]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs3
+  CWEventsRule4:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule4Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs4], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs4]
+              ECSServicename: !Select [1, !Ref EventInputs4]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs4]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs4]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs4
+  CWEventsRule5:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule5Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs5], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs5]
+              ECSServicename: !Select [1, !Ref EventInputs5]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs5]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs5]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs5
+  CWEventsRule6:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule6Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs6], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs6]
+              ECSServicename: !Select [1, !Ref EventInputs6]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs6]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs6]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs6
+  CWEventsRule7:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule7Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs7], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs7]
+              ECSServicename: !Select [1, !Ref EventInputs7]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs7]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs7]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs7
+  CWEventsRule8:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule8Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs8], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs8]
+              ECSServicename: !Select [1, !Ref EventInputs8]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs8]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs8]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs8
+  CWEventsRule9:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule9Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs9], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs9]
+              ECSServicename: !Select [1, !Ref EventInputs9]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs9]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs9]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs9
+  CWEventsRule10:
+    Type: 'AWS::Events::Rule'
+    Condition: IsRule10Required
+    Properties:
+      Description: A CloudWatch Event Rule to trigger the SSM Automation Document by fetching provided CloudTrail event after the indicated timeoff.
+      Name: !Join [ "-", [ !Select [ 1, !Ref EventInputs10], ScrtRotation, CWRule ] ]
+      Targets:
+        - Id: ECS_SSM_Automation_Document
+          RoleArn: !Ref CWEventRoleArn
+          Arn: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ECSForceDeploymentSsmD}:$DEFAULT'
+          Input: !Sub
+            - >-
+              { "ClusterName": ["${Clustername}"],"ECSServiceName": ["${ECSServicename}"],"ECSTaskDefinitionName": ["${ECSTaskDefinitionname}"],"ForceNewDeploymentValue": ["${ForceNewDeploymentvalue}"] }
+            - Clustername: !Select [0, !Ref EventInputs10]
+              ECSServicename: !Select [1, !Ref EventInputs10]
+              ECSTaskDefinitionname: !Select [2, !Ref EventInputs10]
+              ForceNewDeploymentvalue: !Select [3, !Ref EventInputs10]
+      EventPattern:
+        source:
+          - "aws.secretsmanager"
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource:
+            - "secretsmanager.amazonaws.com"
+          eventName:
+            - "UpdateSecretVersionStage"
+          requestParameters:
+            secretId: !Ref SecretInputs10

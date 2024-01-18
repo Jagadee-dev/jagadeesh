@@ -1,0 +1,1684 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  ParameterStoreTdEnvs:
+    Type: CommaDelimitedList
+    Description: Enter the list of SSM Parameter varibles to add in taskdefination. for eg- Key:Value
+    Default: 'N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N'
+  SecretTdEnvs:
+    Type: CommaDelimitedList  
+    Description: Enter the list of Secrets to add in taskdefination.
+    Default: 'N=N=N,N=N=N,N=N=N,N=N=N,N=N=N,N=N=N,N=N=N,N=N=N,N=N=N,N=N=N'
+  S3BucketTdEnvs:
+    Type: CommaDelimitedList
+    Description: Enter the list of S3 bucket names environment variables to add in taskdefination.
+    Default: 'N=N,N=N,N=N,N=N'
+  CommonTdEnvs:
+    Type: CommaDelimitedList
+    Description: Enter the list of Common environment variables to add in taskdefination.
+    Default: 'N=N,N=N,N=N,N=N,N=N'
+  TaskDefinitionInputs:
+    Type: CommaDelimitedList
+    Description: Enter the inputs required for ECS task defination in the format- TaskCpu,TaskMem,DisableNetworking,MemReservation,ContainerPort.
+    Default: '1024,2048,false,2048,3000'
+  ClusterName:
+    Type: String
+    Description: Enter the name of the cluster in which the service has to be created.
+  DesiredCount:
+    Type: Number
+    Description: Enter an integer of how many tasks that has to be runned as a part of service.
+  AppSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select private subnet in your selected VPC for your containers.
+  ListenerPort:
+    Type: String
+    Description: Enter port on which NLB has to listen.
+  EcrRepoName:
+    Type: String
+    Description: Enter the repository name (in small letters) you want to create.
+  EcrImageCountDeleteAfter:
+    Type: Number
+    MinValue: '2'
+    MaxValue: '50'
+    Description: 'Maximum Ecr images to keep in repo. Min:2 Max:50'
+  ECRScanOnPush:
+    Type: String
+    Description: Enter the value for ECR scanOnPush. True to enable scanning and false for no ecr scanning.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Enter the VPC Id.
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  EcsServiceIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceTaskSecurityGroupId/CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11/0.0.0.0/0)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  EcsServiceEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceTaskSecurityGroupId/CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11/0.0.0.0/0)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  ServiceName:
+    Type: String
+    Description: "Specify the name of the microservice" 
+  TargetGroupInputs:
+    Type: CommaDelimitedList
+    Description: 'Specify the target group inputs in following format: HealthCheckIntervalSeconds,HealthCheckTimeoutSeconds,UnhealthyThresholdCount,HealthyThresholdCount,HealthCheckProtocol,HealthCheckPort,Port,Protocol,DeregistrationDelay,HealthCheckResponceCode,HealthCheckPath. Value of "HealthCheckPath" must be None if "HealthCheckProtocol" value is TCP.'
+  AppNetworkLoadBalancer:
+    Type: String
+    Description: Enter the App NLB ARN for Listener to create.
+  TDVolumes:
+    Type: CommaDelimitedList
+    Description: Enter the container paths. Eg- /path,/temp,N:N,N:N,N:N
+    Default: 'N,N,N,N,N'
+  DynamicImageTagStoreName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter store where dynamic ECR image tag is stored.'
+  AutoscalingCapacity:
+    Type: CommaDelimitedList
+    Description: Enter the choice of value for autoscaling in the following order  - MinAutoscalingCapacity,MaxAutoscalingCapacity.
+    Default: '1,10'
+  StepCpuScaleDownValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step Cpu scaling down policy values in following format: MetricIntervalUpperBound,ScalingAdjustment,MetricIntervalLowerBound'
+    Default: 'N:N:N,N:N:N,N:N:N,N:N:N,N:N:N'
+  StepCpuScaleUpValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step cpu scaling up policy values in following format: MetricIntervalLowerBound,MetricIntervalUpperBound,ScalingAdjustment'
+    Default: 'N:N:N,N:N:N,N:N:N,N:N:N,N:N:N'
+  StepMemScaleDownValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step Memory scaling down policy values in following format: MetricIntervalUpperBound,ScalingAdjustment,MetricIntervalLowerBound'
+    Default: 'N:N:N,N:N:N,N:N:N,N:N:N,N:N:N'
+  StepMemScaleUpValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step Memory scaling down policy values in following format: MetricIntervalLowerBound,MetricIntervalUpperBound,ScalingAdjustment'
+    Default: 'N:N:N,N:N:N,N:N:N,N:N:N,N:N:N'
+  LowCpuAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: Statistic,Period,EvaluationPeriods,Threshold,ComparisonOperator.'
+    Default: 'Average,60,1,20,LessThanOrEqualToThreshold'
+  HighCpuAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: Statistic,Period,EvaluationPeriods,Threshold,ComparisonOperator.'
+    Default: 'Average,60,1,75,GreaterThanOrEqualToThreshold'
+  LowMemoryAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: Statistic,Period,EvaluationPeriods,Threshold,ComparisonOperator.'
+    Default: 'Average,60,1,20,LessThanOrEqualToThreshold'
+  HighMemoryAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: Statistic,Period,EvaluationPeriods,Threshold,ComparisonOperator.'
+    Default: 'Average,60,1,70,GreaterThanOrEqualToThreshold'
+Conditions:
+
+  HealthCheckProtocolIsTCP: !Equals [!Select [10 , !Ref TargetGroupInputs ], "None"]
+  
+  TDVolume0Exist: !Equals [!Select [ 0, !Ref TDVolumes ], "N"]
+  TDVolume1Exist: !Equals [!Select [ 1, !Ref TDVolumes ], "N"]
+  TDVolume2Exist: !Equals [!Select [ 2, !Ref TDVolumes ], "N"]
+  TDVolume3Exist: !Equals [!Select [ 3, !Ref TDVolumes ], "N"]
+  TDVolume4Exist: !Equals [!Select [ 4, !Ref TDVolumes ], "N"]
+
+  SSMParamSecret0Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 0, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret1Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 1, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret2Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 2, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret3Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 3, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret4Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 4, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret5Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 5, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret6Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 6, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret7Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 7, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret8Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 8, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret9Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 9, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret10Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 10, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamSecret11Exist: !Equals [!Select [ 1, !Split [ '=', !Select [ 11, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  
+  SSMParamKey0Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 0, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey1Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 1, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey2Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 2, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey3Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 3, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey4Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 4, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey5Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 5, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey6Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 6, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey7Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 7, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey8Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 8, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey9Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 9, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey10Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 10, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  SSMParamKey11Exist: !Equals [!Select [ 0, !Split [ '=', !Select [ 11, !Ref ParameterStoreTdEnvs ] ] ], "N" ]
+  
+  SeretManagerSecret0Exist: !Equals [ !Select [ 0, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret1Exist: !Equals [ !Select [ 1, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret2Exist: !Equals [ !Select [ 2, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret3Exist: !Equals [ !Select [ 3, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret4Exist: !Equals [ !Select [ 4, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret5Exist: !Equals [ !Select [ 5, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret6Exist: !Equals [ !Select [ 6, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret7Exist: !Equals [ !Select [ 7, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret8Exist: !Equals [ !Select [ 8, !Ref SecretTdEnvs ], "N=N=N" ]
+  SeretManagerSecret9Exist: !Equals [ !Select [ 9, !Ref SecretTdEnvs ], "N=N=N" ]
+  
+  SeretManagerSecretKey0Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey1Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey2Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey3Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey4Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey5Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey6Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey7Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey8Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ], 'N']
+  SeretManagerSecretKey9Exist: !Equals [!Select [ 2, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ], 'N']
+  
+  EnvVar0Exist: !Equals [ !Select [ 0, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar1Exist: !Equals [ !Select [ 1, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar2Exist: !Equals [ !Select [ 2, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar3Exist: !Equals [ !Select [ 3, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar4Exist: !Equals [ !Select [ 4, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar5Exist: !Equals [ !Select [ 5, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar6Exist: !Equals [ !Select [ 6, !Ref CommonTdEnvs ], "N=N" ] 
+  EnvVar7Exist: !Equals [ !Select [ 7, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar8Exist: !Equals [ !Select [ 8, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar9Exist: !Equals [ !Select [ 9, !Ref CommonTdEnvs ], "N=N" ] 
+
+  S3EnvVar0Exist: !Equals [ !Select [ 0, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar1Exist: !Equals [ !Select [ 1, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar2Exist: !Equals [ !Select [ 2, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar3Exist: !Equals [ !Select [ 3, !Ref S3BucketTdEnvs ], "N=N" ]
+
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  
+  Ingress10Exist: !Equals [ !Select [ 10, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn10: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress11Exist: !Equals [ !Select [ 11, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn11: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress12Exist: !Equals [ !Select [ 12, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn12: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress13Exist: !Equals [ !Select [ 13, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn13: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress14Exist: !Equals [ !Select [ 14, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn14: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress15Exist: !Equals [ !Select [ 15, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn15: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress16Exist: !Equals [ !Select [ 16, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn16: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress17Exist: !Equals [ !Select [ 17, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn17: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress18Exist: !Equals [ !Select [ 18, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn18: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  Ingress19Exist: !Equals [ !Select [ 19, !Ref EcsServiceIngressRules ], "N:N:N:N" ]
+  SgFoundIn19: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ]]], "sg" ]
+  
+  Egress0Exist: !Equals [ !Select [ 0, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  
+  Egress10Exist: !Equals [ !Select [ 10, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn10: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress11Exist: !Equals [ !Select [ 11, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn11: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress12Exist: !Equals [ !Select [ 12, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn12: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress13Exist: !Equals [ !Select [ 13, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn13: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress14Exist: !Equals [ !Select [ 14, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn14: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress15Exist: !Equals [ !Select [ 15, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn15: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress16Exist: !Equals [ !Select [ 16, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn16: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress17Exist: !Equals [ !Select [ 17, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn17: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress18Exist: !Equals [ !Select [ 18, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn18: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+  Egress19Exist: !Equals [ !Select [ 19, !Ref EcsServiceEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn19: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ]]], "sg" ]
+
+  IsCpuScaleDownRules0Exist: !Equals [ !Select [ 0, !Ref StepCpuScaleDownValues ], "N:N:N" ]
+  IsCpuScaleDownRules1Exist: !Equals [ !Select [ 1, !Ref StepCpuScaleDownValues ], "N:N:N" ]
+  IsCpuScaleDownRules2Exist: !Equals [ !Select [ 2, !Ref StepCpuScaleDownValues ], "N:N:N" ]
+  IsCpuScaleDownRules3Exist: !Equals [ !Select [ 3, !Ref StepCpuScaleDownValues ], "N:N:N" ]
+  IsCpuScaleDownRules4Exist: !Equals [ !Select [ 4, !Ref StepCpuScaleDownValues ], "N:N:N" ]
+
+  IsCpuScaleDownLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleDownValues ]]], 'N']
+
+  IsCpuScaleDownUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleDownValues ]]], 'N']
+  IsCpuScaleDownUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleDownValues ]]], 'N']
+
+  IsMemScaleDownRules0Exist: !Equals [ !Select [ 0, !Ref StepMemScaleDownValues ], "N:N:N" ]
+  IsMemScaleDownRules1Exist: !Equals [ !Select [ 1, !Ref StepMemScaleDownValues ], "N:N:N" ]
+  IsMemScaleDownRules2Exist: !Equals [ !Select [ 2, !Ref StepMemScaleDownValues ], "N:N:N" ]
+  IsMemScaleDownRules3Exist: !Equals [ !Select [ 3, !Ref StepMemScaleDownValues ], "N:N:N" ]
+  IsMemScaleDownRules4Exist: !Equals [ !Select [ 4, !Ref StepMemScaleDownValues ], "N:N:N" ]
+
+  IsMemScaleDownLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepMemScaleDownValues ]]], 'N']
+  
+  IsMemScaleDownUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepMemScaleDownValues ]]], 'N']
+  IsMemScaleDownUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepMemScaleDownValues ]]], 'N']
+
+  IsCpuScaleUpRules0Exist: !Equals [ !Select [ 0, !Ref StepCpuScaleUpValues ], "N:N:N" ]
+  IsCpuScaleUpRules1Exist: !Equals [ !Select [ 1, !Ref StepCpuScaleUpValues ], "N:N:N" ]
+  IsCpuScaleUpRules2Exist: !Equals [ !Select [ 2, !Ref StepCpuScaleUpValues ], "N:N:N" ]
+  IsCpuScaleUpRules3Exist: !Equals [ !Select [ 3, !Ref StepCpuScaleUpValues ], "N:N:N" ]
+  IsCpuScaleUpRules4Exist: !Equals [ !Select [ 4, !Ref StepCpuScaleUpValues ], "N:N:N" ]
+
+  IsCpuScaleUpLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleUpValues ]]], 'N']
+
+  IsCpuScaleUpUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleUpValues ]]], 'N']
+  IsCpuScaleUpUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleUpValues ]]], 'N']
+
+  IsMemScaleUpRules0Exist: !Equals [ !Select [ 0, !Ref StepMemScaleUpValues ], "N:N:N" ]
+  IsMemScaleUpRules1Exist: !Equals [ !Select [ 1, !Ref StepMemScaleUpValues ], "N:N:N" ]
+  IsMemScaleUpRules2Exist: !Equals [ !Select [ 2, !Ref StepMemScaleUpValues ], "N:N:N" ]
+  IsMemScaleUpRules3Exist: !Equals [ !Select [ 3, !Ref StepMemScaleUpValues ], "N:N:N" ]
+  IsMemScaleUpRules4Exist: !Equals [ !Select [ 4, !Ref StepMemScaleUpValues ], "N:N:N" ]
+
+  IsMemScaleUpLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepMemScaleUpValues ]]], 'N']
+
+  IsMemScaleUpUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepMemScaleUpValues ]]], 'N']
+  IsMemScaleUpUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepMemScaleUpValues ]]], 'N']
+  
+
+Resources:
+  EcsCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecs-Logs'
+      RetentionInDays: !Sub '{{resolve:ssm:${ResourceNamePrefix}-${EnvironmentType}-CloudWatch-Log-Retention-Days}}'
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecs-Logs'
+      - Key: ApplicationRole
+        Value: !Sub 'Ecs-LogGroup'
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in TaskSecurityGroup for the ECS service.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SG'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceIngressRules ] ] ] ]
+
+      - !If
+        - Ingress10Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress11Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress12Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress13Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress14Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress15Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress16Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress17Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress18Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceIngressRules ] ] ] ]
+      - !If
+        - Ingress19Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref EcsServiceEgressRules ] ] ] ] 
+      - !If
+        - Egress10Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 10, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress11Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 11, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress12Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 12, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress13Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 13, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress14Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 14, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress15Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 15, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress16Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 16, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress17Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 17, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress18Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 18, !Ref EcsServiceEgressRules ] ] ] ]
+      - !If
+        - Egress19Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 19, !Ref EcsServiceEgressRules ] ] ] ] 
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-${ServiceName}-SG'
+        - Key: ApplicationRole
+          Value: !Sub 'ECS-${ServiceName}-SG'
+  ECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName:  !Ref EcrRepoName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: !Ref ECRScanOnPush 
+      LifecyclePolicy:
+          LifecyclePolicyText: !Sub '{ "rules": [ { "rulePriority": 1, "description": " lifecycle of latest ${EcrImageCountDeleteAfter}", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": ${EcrImageCountDeleteAfter} }, "action": { "type": "expire" } } ] }'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Repo'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-ECRRepo'
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      HealthCheckIntervalSeconds: !Select [0 , !Ref TargetGroupInputs ]
+      HealthCheckTimeoutSeconds: !Select [1 , !Ref TargetGroupInputs ]
+      UnhealthyThresholdCount: !Select [2 , !Ref TargetGroupInputs ]
+      HealthyThresholdCount: !Select [3 , !Ref TargetGroupInputs ]
+      HealthCheckProtocol: !Select [4 , !Ref TargetGroupInputs ]
+      
+      HealthCheckPort: !Select [5 , !Ref TargetGroupInputs ]
+      Name: !Sub '${EnvironmentType}-${ServiceName}-TGrp'
+      Port: !Select [6 , !Ref TargetGroupInputs ]
+      Protocol: !Select [7 , !Ref TargetGroupInputs ]
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !Select [8 , !Ref TargetGroupInputs ]
+      VpcId: !Ref VpcId
+      Matcher: !If
+        - HealthCheckProtocolIsTCP
+        - !Ref AWS::NoValue
+        - HttpCode: !Select [9 , !Ref TargetGroupInputs ]
+      HealthCheckPath: !If
+        - HealthCheckProtocolIsTCP
+        - !Ref AWS::NoValue
+        - !Select [10 , !Ref TargetGroupInputs ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentType}-${ServiceName}-TGrp'
+        - Key: ApplicationRole
+          Value:  !Sub '${ServiceName}-TargetGroup'
+  NlbListner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref AppNetworkLoadBalancer
+      Port: !Ref ListenerPort
+      Protocol: TCP
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ECSRole'
+      Tags:
+      - 
+        Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ECSRole'
+      - 
+        Key: ApplicationRole
+        Value: !Sub '${ServiceName}-ECSRole'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Logs-Policy'
+          PolicyDocument:            
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: 
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}:log-stream:*'
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}'
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - !If
+                - SeretManagerSecret0Exist
+                - !Ref 'AWS::NoValue'
+                - Sid: ECSSecrets
+                  Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource:
+                    - !If
+                      - SeretManagerSecret0Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret1Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret2Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret3Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret4Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret5Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret6Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret7Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret8Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ]
+                    - !If
+                      - SeretManagerSecret9Exist
+                      - !Ref "AWS::NoValue"
+                      - !Select [ 1, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ]
+              - !If
+                - SSMParamSecret0Exist
+                - !Ref 'AWS::NoValue' 
+                - Sid: ECSParameterStore
+                  Effect: Allow
+                  Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  Resource:
+                    - !If
+                      - SSMParamSecret0Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 0, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret1Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 1, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret2Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 2, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret3Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 3, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret4Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 4, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret5Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 5, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret6Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 6, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret7Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 7, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret8Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 8, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret9Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 9, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret10Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 10, !Ref ParameterStoreTdEnvs ] ] ]
+                    - !If
+                      - SSMParamSecret11Exist
+                      - !Ref "AWS::NoValue"
+                      - !Join 
+                        - ''
+                        - - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter'
+                          - !Select [ 1, !Split [ '=', !Select [ 11, !Ref ParameterStoreTdEnvs ] ] ]
+              - !If
+                - S3EnvVar0Exist
+                - !Ref 'AWS::NoValue' 
+                - Sid: S3EnvVars
+                  Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:ListBucket
+                    - s3:PutObject
+                  Resource:
+                    - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar1Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar1Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar2Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar2Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar3Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar3Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+              - Effect: Allow
+                Action:
+                  - 's3:ListAllMyBuckets'
+                  - 'ecr:GetAuthorizationToken'
+                Resource: "*"
+                Sid: BucketsReadPolicy            
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateContainerInstancesState
+                  - ecs:RegisterContainerInstance
+                  - ecs:DeregisterContainerInstance
+                  - ecs:SubmitAttachmentStateChanges
+                  - ecs:SubmitTaskStateChange
+                  - ecs:Poll
+                  - ecs:StartTelemetrySession
+                  - ecs:SubmitContainerStateChange
+                  - ecs:DescribeClusters
+                Resource: 
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/${ClusterName}/*'
+                Sid: ECSPolicy
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: 
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}:log-stream:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}'
+                Sid: CWLogsPolicy
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ECRRepo}'
+              - Effect: Allow
+                Action:
+                  - iam:ListUsers
+                  - iam:ListRoles
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ds:CreateComputer
+                  - ds:DescribeDirectories
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutInsightRule
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:PutAnomalyDetector
+                Resource: "*"
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: ServiceRole
+    Properties:
+      Cpu: !Select [ 0, !Ref TaskDefinitionInputs ] 
+      ExecutionRoleArn: !GetAtt ServiceRole.Arn
+      Family: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-TD'
+      Memory: !Select [ 1, !Ref TaskDefinitionInputs ] 
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt ServiceRole.Arn
+      Volumes: 
+        - !If
+          - TDVolume0Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeOne'
+        - !If
+          - TDVolume1Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeTwo'
+        - !If
+          - TDVolume2Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeThree'
+        - !If
+          - TDVolume3Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFour'
+        - !If
+          - TDVolume4Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFive'
+      ContainerDefinitions:
+        - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+          MountPoints:
+          - !If
+            - TDVolume0Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 0, !Ref TDVolumes ] 
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeOne'
+          - !If
+            - TDVolume1Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 1, !Ref TDVolumes ]
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeTwo'
+          - !If
+            - TDVolume2Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 2, !Ref TDVolumes ]
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeThree'
+          - !If
+            - TDVolume3Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 3, !Ref TDVolumes ]
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFour'
+          - !If
+            - TDVolume4Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 4, !Ref TDVolumes ]
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFive'
+          DisableNetworking: !Select [ 2, !Ref TaskDefinitionInputs ] 
+          ReadonlyRootFilesystem: true
+          Secrets:  
+            - !If
+              - SSMParamKey0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 0, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey1Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 1, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey2Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 2, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 3, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey4Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 4, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 4, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey5Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 5, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 5, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey6Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 6, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 6, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey7Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 7, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 7, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey8Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 8, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 8, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey9Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 9, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 9, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey10Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 10, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 10, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SSMParamKey11Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 11, !Ref ParameterStoreTdEnvs ] ] ]
+                ValueFrom:  !Select [ 1, !Split [ '=', !Select [ 11, !Ref ParameterStoreTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey0Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 0, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret1Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey1Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 1, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret2Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey2Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 2, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey3Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 3, !Ref SecretTdEnvs ] ] ] 
+            - !If
+              - SeretManagerSecret4Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey4Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 4, !Ref SecretTdEnvs ] ] ] 
+            - !If
+              - SeretManagerSecret5Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey5Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 5, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret6Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey6Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 6, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret7Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey7Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 7, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret8Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey8Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 8, !Ref SecretTdEnvs ] ] ]
+            - !If
+              - SeretManagerSecret9Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ]
+                ValueFrom: !If
+                  - SeretManagerSecretKey9Exist
+                  - !Select [ 1, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ]
+                  - !Sub 
+                      - '${SecretArn}:${JSONKey}::'
+                      - SecretArn: !Select [ 1, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ]
+                        JSONKey: !Select [ 2, !Split [ '=', !Select [ 9, !Ref SecretTdEnvs ] ] ]
+          Environment:
+            - !If
+              - EnvVar0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 0, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar1Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 1, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar2Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 2, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 3, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar4Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 4, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 4, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar5Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 5, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 5, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar6Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 6, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 6, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar7Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 7, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 7, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar8Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 8, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 8, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar9Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 9, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 9, !Ref CommonTdEnvs ] ] ]            
+            - !If
+              - S3EnvVar0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar1Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar2Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+          LogConfiguration: #has to be modified#configuration options to send to the log driver
+            LogDriver: awslogs
+            Options: #configuration options to send to the log driver
+              awslogs-group: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecs-Logs'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Essential: true
+          Image: !Sub '${ECRRepo.RepositoryUri}:${DynamicImageTagStoreName}'
+          MemoryReservation: !Select [ 3, !Ref TaskDefinitionInputs ] 
+          PortMappings:
+            - ContainerPort: !Select [ 4, !Ref TaskDefinitionInputs ] 
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-TaskDefinition'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-TaskDefinition'
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+    - TaskDefinition
+    - NlbListner
+    Properties:
+      Cluster: !Ref ClusterName
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+          ContainerPort: !Select [ 4, !Ref TaskDefinitionInputs ] 
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups: 
+            - !Ref TaskSecurityGroup
+          Subnets: !Ref AppSubnets
+      SchedulingStrategy: REPLICA #Default for FARGATE
+      ServiceName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+      TaskDefinition: !Ref TaskDefinition
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-EcsService'
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: 'ecs'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ResourceId: !Join ['/', [service, !Ref ClusterName, !GetAtt Service.Name]]
+      MinCapacity: !Select [ 0, !Ref AutoscalingCapacity ]
+      MaxCapacity: !Select [ 1, !Ref AutoscalingCapacity ]
+      RoleARN: !GetAtt  ServiceRole.Arn
+  CpuScaleDownPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Scale-Down-Cpu'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+        - !If 
+          - IsCpuScaleDownRules0Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleDownLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleDownUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleDownValues ]]]]
+        - !If 
+          - IsCpuScaleDownRules1Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleDownLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleDownValues ]]]]            
+            MetricIntervalUpperBound: !If [ IsCpuScaleDownUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleDownValues ]]]]
+        - !If 
+          - IsCpuScaleDownRules2Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleDownLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleDownUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleDownValues ]]]]
+        - !If 
+          - IsCpuScaleDownRules3Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleDownLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleDownUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleDownValues ]]]]
+        - !If 
+          - IsCpuScaleDownRules4Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleDownLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleDownValues ]]]]            
+            MetricIntervalUpperBound: !If [ IsCpuScaleDownUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleDownValues ]]]]
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+  CpuScaleUpPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Scale-Up-Cpu'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+        - !If 
+          - IsCpuScaleUpRules0Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleUpLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleUpUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepCpuScaleUpValues ]]]]
+        - !If 
+          - IsCpuScaleUpRules1Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleUpLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleUpUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepCpuScaleUpValues ]]]]
+        - !If 
+          - IsCpuScaleUpRules2Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleUpLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleUpUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepCpuScaleUpValues ]]]]
+        - !If 
+          - IsCpuScaleUpRules3Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleUpLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleUpUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepCpuScaleUpValues ]]]]
+        - !If 
+          - IsCpuScaleUpRules4Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsCpuScaleUpLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsCpuScaleUpUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepCpuScaleUpValues ]]]]
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+  MemScaleDownPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Scale-Down-Mem'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+        - !If 
+          - IsMemScaleDownRules0Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref StepMemScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleDownLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepMemScaleDownValues ]]]]  
+            MetricIntervalUpperBound: !If [ IsMemScaleDownUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepMemScaleDownValues ]]]]
+        - !If 
+          - IsMemScaleDownRules1Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref StepMemScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleDownLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepMemScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleDownUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepMemScaleDownValues ]]]]
+        - !If 
+          - IsMemScaleDownRules2Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref StepMemScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleDownLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepMemScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleDownUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepMemScaleDownValues ]]]]
+        - !If 
+          - IsMemScaleDownRules3Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref StepMemScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleDownLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepMemScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleDownUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepMemScaleDownValues ]]]]
+        - !If 
+          - IsMemScaleDownRules4Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref StepMemScaleDownValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleDownLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepMemScaleDownValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleDownUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepMemScaleDownValues ]]]]
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+  MemScaleUpPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Scale-Up-Mem'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+        - !If 
+          - IsMemScaleUpRules0Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref StepMemScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleUpLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref StepMemScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleUpUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref StepMemScaleUpValues ]]]]
+        - !If 
+          - IsMemScaleUpRules1Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref StepMemScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleUpLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref StepMemScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleUpUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref StepMemScaleUpValues ]]]]
+        - !If 
+          - IsMemScaleUpRules2Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref StepMemScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleUpLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref StepMemScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleUpUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref StepMemScaleUpValues ]]]]
+        - !If 
+          - IsMemScaleUpRules3Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref StepMemScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleUpLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref StepMemScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleUpUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref StepMemScaleUpValues ]]]]
+        - !If 
+          - IsMemScaleUpRules4Exist
+          - !Ref "AWS::NoValue"
+          - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref StepMemScaleUpValues ]]]
+            MetricIntervalLowerBound: !If [ IsMemScaleUpLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref StepMemScaleUpValues ]]]]
+            MetricIntervalUpperBound: !If [ IsMemScaleUpUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref StepMemScaleUpValues ]]]]
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+  LowCpuUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Low-Cpu'
+      AlarmDescription: !Sub "Low CPU utilization for service ${ServiceName} in ${ResourceNamePrefix} ${EnvironmentType} environment"
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      Statistic: !Select [ 0, !Ref LowCpuAlarmValues ]
+      Period: !Select [ 1, !Ref LowCpuAlarmValues ]
+      EvaluationPeriods: !Select [ 2, !Ref LowCpuAlarmValues ]
+      Threshold: !Select [ 3, !Ref LowCpuAlarmValues ]
+      ComparisonOperator: !Select [ 4, !Ref LowCpuAlarmValues ]
+      AlarmActions:
+        - !Ref CpuScaleDownPolicy
+  HighCpuUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-High-Cpu'
+      AlarmDescription: !Sub "High CPU utilization for service ${ServiceName} in ${ResourceNamePrefix} ${EnvironmentType} environment"
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      Statistic: !Select [ 0, !Ref HighCpuAlarmValues ]
+      Period: !Select [ 1, !Ref HighCpuAlarmValues ]
+      EvaluationPeriods: !Select [ 2, !Ref HighCpuAlarmValues ]
+      Threshold: !Select [ 3, !Ref HighCpuAlarmValues ]
+      ComparisonOperator: !Select [ 4, !Ref HighCpuAlarmValues ]
+      AlarmActions:
+        - !Ref CpuScaleUpPolicy
+  LowMemUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Low-Mem'
+      AlarmDescription: !Sub "Low Mem utilization for service ${ServiceName} in ${ResourceNamePrefix} ${EnvironmentType} environment"
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      Statistic: !Select [ 0, !Ref LowMemoryAlarmValues ]
+      Period: !Select [ 1, !Ref LowMemoryAlarmValues ]
+      EvaluationPeriods: !Select [ 2, !Ref LowMemoryAlarmValues ]
+      Threshold: !Select [ 3, !Ref LowMemoryAlarmValues ]
+      ComparisonOperator: !Select [ 4, !Ref LowMemoryAlarmValues ]
+      AlarmActions:
+        - !Ref MemScaleDownPolicy
+  HighMemUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-High-Mem'
+      AlarmDescription: !Sub "High Mem utilization for service ${ServiceName} in ${ResourceNamePrefix} ${EnvironmentType} environment"
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+        - Name: ClusterName
+          Value: !Ref ClusterName
+      Statistic: !Select [ 0, !Ref HighMemoryAlarmValues ]
+      Period: !Select [ 1, !Ref HighMemoryAlarmValues ]
+      EvaluationPeriods: !Select [ 2, !Ref HighMemoryAlarmValues ]
+      Threshold: !Select [ 3, !Ref HighMemoryAlarmValues ]
+      ComparisonOperator: !Select [ 4, !Ref HighMemoryAlarmValues ]
+      AlarmActions:
+        - !Ref MemScaleUpPolicy
+Outputs:
+  TaskDefinitionArn:
+    Description: Ref function returns the ARN of the MyTaskDefinition task definition, such as arn:aws:ecs:us-west-2:123456789012:task-definition/TaskDefinitionFamily:1.
+    Value: !Ref TaskDefinition
+  ServiceArn:
+    Description: Ref function returns the ARN of the MyECSService service, such as arn:aws:ecs:us-west-2:123456789012:service/sample-webapp.
+    Value: !Ref Service
+  ServiceName:
+    Description: The Fn::GetAtt intrinsic function returns the name of the Amazon ECS service, such as sample-webapp.
+    Value: !GetAtt Service.Name
+  TargetGroupName:
+    Description: The name of the target group. For example, my-target-group.
+    Value: !GetAtt TargetGroup.TargetGroupName            
+  TargetGroupArn:
+    Description: Ref returns the Amazon Resource Name (ARN) of the target group.
+    Value: !Ref TargetGroup       
+  ECRRepoArn:
+    Description: Returns the Amazon Resource Name (ARN) for the specified AWS::ECR::Repository resource. For example, arn:aws:ecr:eu-west-1:123456789012:repository/test-repository .
+    Value: !GetAtt ECRRepo.Arn            
+  ECRRepoName:
+    Description: Ref returns the resource name, such as test-repository.
+    Value: !Ref ECRRepo    
+  ECRRepoUri:
+    Description: Returns the URI for the specified AWS::ECR::Repository resource. For example, 123456789012.dkr.ecr.us-west-2.amazonaws.com/repository.
+    Value: !GetAtt ECRRepo.RepositoryUri      
+  LogGroupName:
+    Description: Ref returns the resource name.
+    Value: !Ref EcsCloudWatchLogGroup    
+  LogGroupArn:
+    Description: The Fn::GetAtt intrinsic function returns the ARN of the log group, such as arn:aws:logs:us-west-1:123456789012:log-group:/mystack-testgroup-12ABC1AB12A1:*
+    Value: !GetAtt EcsCloudWatchLogGroup.Arn      
+  TaskSecurityGroupId:
+    Description: The Fn::GetAtt intrinsic function returns a group ID of the specified security group, such as sg-94b3a1f6.
+    Value: !GetAtt TaskSecurityGroup.GroupId          
+  TaskDefinitionName:
+    Description: This function returns taskdefinition name.
+    Value: !Select [ 0, !Split [ ':', !Select [ 1,!Split ['/', !Ref TaskDefinition ]] ] ]

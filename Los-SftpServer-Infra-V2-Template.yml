@@ -1,0 +1,696 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create Sftp server and users and permissions to access client specific files in the bucket.
+Parameters:
+  ResourceNamePrefix:
+    Description: Enter Resource Name prefix.
+    Type: String
+  EnvironmentType:
+    Description: Enter the EnvironmentType.
+    Type: String
+  ServiceName:
+    Type: String
+    Description: Specify the name of the service.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of the Amazon VPC used for environment.
+  SftpBucketName:
+    Type: String
+    Description: Enter the name of the batch files S3 bucket.
+  SftpServerConfiguration:
+    Type: CommaDelimitedList
+    Description: Enter the values of EndpointType,AcmCertificateArn respectively. Ex- PUBLIC,arn:aws:acm:us-east-1:040798654714:certificate/8db79981-c03a-41bb-827a-49d151a5b166
+  AppPrivateSubnetIds:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Select the subnets in your selected VPC for creation of App LoadBalancer.
+  SftpSgIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  SftpSgEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically. To create AllTraffic to anywhere use the parameter default value.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  SftpSecretName: 
+    Type: String
+    Description: Enter the name of the secret where sftp user credentials are saved.
+  IdentityProviderType:
+    Type: String
+    Description: Enter
+Conditions:
+  SftpIngress0Exist: !Equals [ !Select [ 0, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress1Exist: !Equals [ !Select [ 1, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress2Exist: !Equals [ !Select [ 2, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress3Exist: !Equals [ !Select [ 3, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress4Exist: !Equals [ !Select [ 4, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress5Exist: !Equals [ !Select [ 5, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress6Exist: !Equals [ !Select [ 6, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress7Exist: !Equals [ !Select [ 7, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress8Exist: !Equals [ !Select [ 8, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress9Exist: !Equals [ !Select [ 9, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  
+  SftpEgress0Exist: !Equals [ !Select [ 0, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress1Exist: !Equals [ !Select [ 1, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress2Exist: !Equals [ !Select [ 2, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress3Exist: !Equals [ !Select [ 3, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress4Exist: !Equals [ !Select [ 4, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress5Exist: !Equals [ !Select [ 5, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress6Exist: !Equals [ !Select [ 6, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress7Exist: !Equals [ !Select [ 7, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress8Exist: !Equals [ !Select [ 8, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress9Exist: !Equals [ !Select [ 9, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+Resources:
+  SftpSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for Sftp.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-V3-SGrp'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-V3-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-SGrp'
+      SecurityGroupIngress:
+      - !If
+        - SftpIngress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - SftpEgress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] ]
+
+  SftpEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-V3-Eip1'
+        - Key: ApplicationRole
+          Value: Sftp-Eip 
+  SftpEIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-V3-Eip2'
+        - Key: ApplicationRole
+          Value: Sftp-Eip2 
+
+  SftpServer:
+    Type: AWS::Transfer::Server
+    Properties:
+      Certificate: !Select [ 1, !Ref SftpServerConfiguration ]
+      Domain: S3 
+      IdentityProviderType: !Ref IdentityProviderType
+      IdentityProviderDetails:
+        InvocationRole: !GetAtt SftpIdentityProviderRole.Arn
+        Url:
+          Fn::Join:
+            - ''
+            - - https://
+              - Ref: CustomIdentityProviderApi
+              - .execute-api.
+              - Ref: AWS::Region
+              - .amazonaws.com/
+              - Ref: ApiStage
+      LoggingRole: !GetAtt SftpCloudWatchLoggingRole.Arn
+      EndpointType: !Select [ 0, !Ref SftpServerConfiguration ]
+      EndpointDetails:
+        VpcId: !Ref VpcId
+        AddressAllocationIds: 
+          - !GetAtt SftpEIP1.AllocationId
+          - !GetAtt SftpEIP2.AllocationId
+        SecurityGroupIds: 
+          - !Ref SftpSg
+        SubnetIds: !Ref AppPrivateSubnetIds
+      Protocols: 
+        - SFTP
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Srvr'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Srvr'
+  SftpCloudWatchLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: IAM role used by Sftp  to log API requests to CloudWatch
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - transfer.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Lg-Plcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${SftpBucketName}'
+                  - !Sub 'arn:aws:s3:::${SftpBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: 
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+
+  CustomIdentityProviderApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+      Description: !Sub 'API Gateway for ${ServiceName} used for GetUserConfig requests'
+      FailOnWarnings: true
+      EndpointConfiguration: 
+        Types: 
+          - 'REGIONAL' 
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: LambdaSecretsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+  ApiCloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: IAM role used by API Gateway to log API requests to CloudWatch
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - apigateway.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ApiGateway-Lg-Plcy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            - logs:DescribeQueries
+            - logs:FilterLogEvents
+            - logs:GetLogEvents
+            - logs:GetLogGroupFields
+            - logs:GetLogRecord
+            - logs:GetQueryResults
+            - logs:PutLogEvents
+            - logs:StartQuery
+            - logs:StopQuery
+            Resource: "*"
+  ApiLoggingAccount:
+    Type: AWS::ApiGateway::Account
+    DependsOn:
+    - CustomIdentityProviderApi
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiCloudWatchLogsRole.Arn
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId:
+        Ref: ApiDeployment
+      MethodSettings:
+      - DataTraceEnabled: false
+        HttpMethod: "*"
+        LoggingLevel: INFO
+        ResourcePath: "/*"
+      RestApiId: !Ref CustomIdentityProviderApi
+      StageName: prod
+  ApiDeployment:
+    DependsOn:
+    - GetUserConfigRequest
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref CustomIdentityProviderApi
+  SftpIdentityProviderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: transfer.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-InvokeApi-Plcy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - execute-api:Invoke
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CustomIdentityProviderApi}/prod/GET/*
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ReadApi-Plcy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - apigateway:GET
+            Resource: "*"
+  SftpUserConfigLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          SftpSecretName: !Ref SftpSecretName
+      Code:
+        ZipFile:
+          Fn::Sub: |
+            import os
+            import json
+            import boto3
+            import base64
+            Secret_Name = os.environ['SftpSecretName']
+
+            from botocore.exceptions import ClientError
+
+            def lambda_handler(event, context):
+                resp_data = {}
+
+                if 'username' not in event or 'serverId' not in event:
+                    print("Incoming username or serverId missing  - Unexpected")
+                    return response_data
+
+                # It is recommended to verify server ID against some value, this template does not verify server ID
+                 
+                input_username = event['username']
+                input_serverId = event['serverId']
+                print("Username: {}, ServerId: {}".format(input_username, input_serverId));
+
+                if 'password' in event:
+                    input_password = event['password']
+                    if input_password == '' and (event['protocol'] == 'FTP' or event['protocol'] == 'FTPS'):
+                      print("Empty password not allowed")
+                      return response_data
+                else:
+                    print("No password, checking for SSH public key")
+                    input_password = ''
+
+                # Lookup user's secret which can contain the password or SSH public keys
+                resp = get_secret(Secret_Name)
+                print(resp)
+                if resp != None:
+                    resp_dict = json.loads(resp)
+                else:
+                    print("Secrets Manager exception thrown")
+                    return {}
+
+                if input_password != '':
+                    if 'password' in resp_dict:
+                        resp_password = resp_dict['password']
+                    else:
+                        print("Unable to authenticate user - No field match in Secret for password")
+                        return {}
+
+                    if resp_password != input_password:
+                        print("Unable to authenticate user - Incoming password does not match stored")
+                        return {}
+                else:
+                    # SSH Public Key Auth Flow - The incoming password was empty so we are trying ssh auth and need to return the public key data if we have it
+                    if 'PublicKey' in resp_dict:
+                        resp_data['PublicKeys'] = resp_dict['PublicKey'].split(",")
+                    else:
+                        print("Unable to authenticate user - No public keys found")
+                        return {}
+
+                # If we've got this far then we've either authenticated the user by password or we're using SSH public key auth and
+                # we've begun constructing the data response. Check for each key value pair.
+                # These are required so set to empty string if missing
+                if 'IAMRole' in resp_dict:
+                    resp_data['IAMRole'] = resp_dict['IAMRole']
+                else:
+                    print("No field match for role - Set empty string in response")
+                    resp_data['IAMRole'] = ''
+
+                # These are optional so ignore if not present
+                if 'Policy' in resp_dict:
+                    resp_data['Policy'] = resp_dict['Policy']
+
+                if 'HomeDirectory' in resp_dict:
+                    print("HomeDirectory found - Applying setting for virtual folders")
+                    resp_data['HomeDirectory'] = resp_dict['HomeDirectory']
+                    resp_data['HomeDirectoryType'] = "LOGICAL"
+                elif 'HomeDirectory' in resp_dict:
+                    print("HomeDirectory found - Cannot be used with HomeDirectoryDetails")
+                    resp_data['HomeDirectory'] = resp_dict['HomeDirectory']
+                else:
+                    print("HomeDirectory not found - Defaulting to /")
+
+                print("Completed Response Data: "+json.dumps(resp_data))
+                return resp_data
+
+            def get_secret(id):
+                client = boto3.session.Session().client(service_name='secretsmanager')
+
+                try:
+                    resp = client.get_secret_value(SecretId=id)
+                    # Decrypts secret using the associated KMS CMK.
+                    # Depending on whether the secret is a string or binary, one of these fields will be populated.
+                    if 'SecretString' in resp:
+                        print("Found Secret String")
+                        return resp['SecretString']
+                    else:
+                        print("Found Binary Secret")
+                        return base64.b64decode(resp['SecretBinary'])
+                except ClientError as err:
+                    print('Error Talking to SecretsManager: ' + err.response['Error']['Code'] + ', Message: ' + str(err))
+                    return None
+      Description: A function to lookup and return user data from AWS Secrets Manager.
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: LambdaExecutionRole.Arn
+      Runtime: python3.10
+
+  SftpUserConfigLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:invokeFunction
+      FunctionName: !GetAtt SftpUserConfigLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CustomIdentityProviderApi}/*'
+  ServersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ParentId:
+        Fn::GetAtt:
+        - CustomIdentityProviderApi
+        - RootResourceId
+      PathPart: servers
+  ServerIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ParentId:
+        Ref: ServersResource
+      PathPart: "{serverId}"
+  UsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ParentId:
+        Ref: ServerIdResource
+      PathPart: users
+  UserNameResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ParentId:
+        Ref: UsersResource
+      PathPart: "{username}"
+  GetUserConfigResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ParentId:
+        Ref: UserNameResource
+      PathPart: config
+  GetUserConfigRequest:
+    Type: AWS::ApiGateway::Method
+    DependsOn: GetUserConfigResponseModel
+    Properties:
+      AuthorizationType: AWS_IAM
+      HttpMethod: GET
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - ":apigateway:"
+              - Ref: AWS::Region
+              - ":lambda:path/2015-03-31/functions/"
+              - Fn::GetAtt:
+                - SftpUserConfigLambda
+                - Arn
+              - "/invocations"
+        IntegrationResponses:
+        - StatusCode: 200
+        RequestTemplates:
+          application/json: |
+            {
+              "username": "$util.urlDecode($input.params('username'))",
+              "password": "$util.escapeJavaScript($util.base64Decode($input.params('PasswordBase64'))).replaceAll("\\'","'")",
+              "protocol": "$input.params('protocol')",
+              "serverId": "$input.params('serverId')",
+              "sourceIp": "$input.params('sourceIp')"
+            }
+      RequestParameters:
+        method.request.header.PasswordBase64: false
+        method.request.querystring.protocol: false
+        method.request.querystring.sourceIp: false
+      ResourceId:
+        Ref: GetUserConfigResource
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      MethodResponses:
+      - StatusCode: 200
+        ResponseModels:
+          application/json: UserConfigResponseModel
+  GetUserConfigResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId:
+        Ref: CustomIdentityProviderApi
+      ContentType: application/json
+      Description: API response for GetUserConfig
+      Name: UserConfigResponseModel
+      Schema:
+        "$schema": http://json-schema.org/draft-04/schema#
+        title: UserUserConfig
+        type: object
+        properties:
+          HomeDirectory:
+            type: string
+          Role:
+            type: string
+          Policy:
+            type: string
+          PublicKeys:
+            type: array
+            items:
+              type: string

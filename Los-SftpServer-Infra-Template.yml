@@ -1,0 +1,967 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create Sftp server and users and permissions to access client specific files in the bucket.
+Parameters:
+  ResourceNamePrefix:
+    Description: Enter Resource Name prefix.
+    Type: String
+  EnvironmentType:
+    Description: Enter the EnvironmentType.
+    Type: String
+  ServiceName:
+    Type: String
+    Description: Specify the name of the service.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of the Amazon VPC used for environment.
+  SftpBucketName:
+    Type: String
+    Description: Enter the name of the batch files S3 bucket.
+  SftpServerConfiguration:
+    Type: CommaDelimitedList
+    Description: Enter the values of EndpointType,AcmCertificateArn respectively. Ex- PUBLIC,arn:aws:acm:us-east-1:040798654714:certificate/8db79981-c03a-41bb-827a-49d151a5b166
+  Realm: 
+    Type: CommaDelimitedList
+    Description: Enter the name of the client
+    Default: None,None,None,None,None,None,None,None,None,None
+  SftpSgIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  SftpSgEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically. To create AllTraffic to anywhere use the parameter default value.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  AppSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: A list of two subnet IDs in your environment VPC.
+  PublicKey:
+    Type: String
+Conditions:
+  RealmValue0Exist: !Not [ !Equals [ "None", !Select [0, !Ref Realm]]]
+  RealmValue1Exist: !Not [ !Equals [ "None", !Select [1, !Ref Realm]]]
+  RealmValue2Exist: !Not [ !Equals [ "None", !Select [2, !Ref Realm]]]
+  RealmValue3Exist: !Not [ !Equals [ "None", !Select [3, !Ref Realm]]]
+  RealmValue4Exist: !Not [ !Equals [ "None", !Select [4, !Ref Realm]]]
+  RealmValue5Exist: !Not [ !Equals [ "None", !Select [5, !Ref Realm]]]
+  RealmValue6Exist: !Not [ !Equals [ "None", !Select [6, !Ref Realm]]]
+  RealmValue7Exist: !Not [ !Equals [ "None", !Select [7, !Ref Realm]]]
+  RealmValue8Exist: !Not [ !Equals [ "None", !Select [8, !Ref Realm]]]
+  RealmValue9Exist: !Not [ !Equals [ "None", !Select [9, !Ref Realm]]]
+
+  SftpIngress0Exist: !Equals [ !Select [ 0, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress1Exist: !Equals [ !Select [ 1, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress2Exist: !Equals [ !Select [ 2, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress3Exist: !Equals [ !Select [ 3, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress4Exist: !Equals [ !Select [ 4, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress5Exist: !Equals [ !Select [ 5, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress6Exist: !Equals [ !Select [ 6, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress7Exist: !Equals [ !Select [ 7, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress8Exist: !Equals [ !Select [ 8, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  SftpIngress9Exist: !Equals [ !Select [ 9, !Ref SftpSgIngressRules ], "N:N:N:N" ]
+  SftpSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ]]], "sg" ]
+  
+  SftpEgress0Exist: !Equals [ !Select [ 0, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress1Exist: !Equals [ !Select [ 1, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress2Exist: !Equals [ !Select [ 2, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress3Exist: !Equals [ !Select [ 3, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress4Exist: !Equals [ !Select [ 4, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress5Exist: !Equals [ !Select [ 5, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress6Exist: !Equals [ !Select [ 6, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress7Exist: !Equals [ !Select [ 7, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress8Exist: !Equals [ !Select [ 8, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+  SftpEgress9Exist: !Equals [ !Select [ 9, !Ref SftpSgEgressRules ], "N:N:N:N" ]
+  SftpEgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ]]], "sg" ]
+Resources:
+  SftpSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for Sftp.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-SGrp'
+      SecurityGroupIngress:
+      - !If
+        - SftpIngress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgIngressRules ] ] ] ]
+      - !If
+        - SftpIngress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SftpSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - SftpEgress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref SftpSgEgressRules ] ] ] ]
+      - !If
+        - SftpEgress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [SftpEgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SftpEgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref SftpSgEgressRules ] ] ] ]
+  SftpEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Eip1'
+        - Key: ApplicationRole
+          Value: Sftp-Eip 
+  SftpEIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Eip2'
+        - Key: ApplicationRole
+          Value: Sftp-Eip2 
+  SftpServer:
+    Type: AWS::Transfer::Server
+    Properties:
+      Certificate: !Select [ 1, !Ref SftpServerConfiguration ]
+      Domain: S3 
+      IdentityProviderType: SERVICE_MANAGED
+      LoggingRole: !GetAtt SftpRole.Arn
+      EndpointType: !Select [ 0, !Ref SftpServerConfiguration ]
+      EndpointDetails:
+        VpcId: !Ref VpcId
+        AddressAllocationIds: 
+          - !GetAtt SftpEIP1.AllocationId
+          - !GetAtt SftpEIP2.AllocationId
+        SecurityGroupIds: 
+          - !Ref SftpSg
+        SubnetIds: !Ref AppSubnetIds
+      Protocols: 
+        - SFTP
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Srvr'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Srvr'
+      
+  SftpRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Plcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${SftpBucketName}'
+                  - !Sub 'arn:aws:s3:::${SftpBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:DeleteLogStream'
+                  - 'logs:TagResource'
+                  - 'logs:DeleteLogGroup'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:*'
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: 
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+  SftpUser0:
+    Type: AWS::Transfer::User
+    Condition: RealmValue0Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 0, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 0, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [0, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [0, !Ref Realm]
+  SftpUser1:
+    Type: AWS::Transfer::User
+    Condition: RealmValue1Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 1, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 1, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [1, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [1, !Ref Realm]
+  SftpUser2:
+    Type: AWS::Transfer::User
+    Condition: RealmValue2Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 2, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 2, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [2, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [2, !Ref Realm]
+  SftpUser3:
+    Type: AWS::Transfer::User
+    Condition: RealmValue3Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 3, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 3, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [3, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [3, !Ref Realm]
+  SftpUser4:
+    Type: AWS::Transfer::User
+    Condition: RealmValue4Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 4, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 4, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [4, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [4, !Ref Realm]
+  SftpUser5:
+    Type: AWS::Transfer::User
+    Condition: RealmValue5Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 5, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 5, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [5, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [5, !Ref Realm]
+  SftpUser6:
+    Type: AWS::Transfer::User
+    Condition: RealmValue6Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 6, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 6, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [6, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [6, !Ref Realm]
+  SftpUser7:
+    Type: AWS::Transfer::User
+    Condition: RealmValue7Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 7, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 7, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [7, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [7, !Ref Realm]
+  SftpUser8:
+    Type: AWS::Transfer::User
+    Condition: RealmValue8Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 8, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 8, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [8, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [8, !Ref Realm]
+  SftpUser9:
+    Type: AWS::Transfer::User
+    Condition: RealmValue9Exist
+    Properties:
+      HomeDirectoryType: PATH
+      Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${transfer:HomeBucket}"
+                ],
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                    ]
+                  }
+                }
+              },
+              {
+                "Sid": "HomeDirObjectAccess",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:GetObjectVersion",
+                  "s3:GetObjectACL",
+                  "s3:PutObjectACL"
+                ],
+                "Resource": "arn:aws:s3:::${transfer:HomeDirectory}*"
+              }
+            ]
+          }
+      Role: !GetAtt SftpRole.Arn
+      ServerId: !GetAtt SftpServer.ServerId
+      HomeDirectory: !Join 
+        - ''
+        - - !Sub '/${SftpBucketName}/ClientName/singular/'
+          - !Select [ 9, !Ref Realm ]
+          - '/'
+      UserName: !Select [ 9, !Ref Realm ]
+      SshPublicKeys: 
+        - !Ref PublicKey
+      # SshPublicKeys: 
+      #   - !Sub '{{resolve:secretsmanager:${SftpRsaKeySecretName}:SecretString:RsaPublicKey}}'
+      Tags: 
+        - Key: Name
+          Value: !Sub
+              - '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [9, !Ref Realm]
+        - Key: ApplicationRole
+          Value: !Sub 
+              - '${ServiceName}-${Realm}-Usr'
+              - Realm: !Select [9, !Ref Realm]

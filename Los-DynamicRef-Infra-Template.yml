@@ -1,0 +1,1122 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates S3 Buckets, Bucket Policy, WebACL Parameter Stores, CloudFormation Execution Role, KMS Keys, KMS Alias, Secret Manager, Security Groups and its associated Parameter Store Version 3.0.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ResourceNamePrefixInSmallLetters
+          - EnvironmentTypeInSmallLetters
+      - Label:
+          default: "S3Bucket Configurations"
+        Parameters:
+          - ELBAccessLogBucketName
+          - CDNAccessLogBucketName
+          - ArtifactBucketName
+          - StackDeploymentBucketName
+          - S3AccessLogLocalBucketName
+          - DWHBucketName
+          - RepTargetBucketName
+          - RepTargetAccountId
+          - RMABucketName
+          - FileMappingBaseAmiId
+      - Label:
+          default: "SSM ParameterStore Configurations"
+        Parameters:
+          - RegionalWafId
+          - CloudFrontWafId
+          - CloudwatchRetentionDays
+      - Label:
+          default: "Networking Configurations"
+        Parameters:
+          - ServerlessSgId
+          - AppSubnetIds
+      - Label:
+          default: "ECS Configurations"
+        Parameters:
+          - ClusterName
+      - Label:
+          default: "Sns Configurations"
+        Parameters:
+          - DbDwhSubscriptions
+          - DbDwhResourceRestrictionArn
+      - Label:
+          default: "SSM Document Configurations"
+        Parameters:
+          - DocumentVersion
+      - Label:
+          default: "Cross Account Configurations"
+        Parameters:
+          - CrossAccountId
+          - AllowedLambdaRoles
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Name your EnvironmentType according to need.
+  ELBAccessLogBucketName:
+    Type: String
+    Description: Enter the name of S3 Bucket. 
+  CDNAccessLogBucketName:
+    Type: String
+    Description: Enter the name of S3 Bucket.
+  CloudwatchRetentionDays:
+    Type: String
+    Description: Specify the SSM ParameterStore value for cloudwatch retention days.
+    Default: 30
+  ArtifactBucketName:
+    Type: CommaDelimitedList
+    Description: Specify the bucket details in following format - BucketName,VersioningConfiguration(Enabled | Suspended), ExpirationDays & NonCurrentVersionExpirationDays (eg-Value1,Value2,Value3).
+    Default: '<BucketName>,Enabled,90,90'
+  StackDeploymentBucketName:
+    Type: String
+    Description: (Required) Enter the name of stack deployment pipeline artifact bucket name. The specified name will be stored in parameter store for dynamic reference with other templates.
+  DWHBucketName:
+    Type: CommaDelimitedList
+    Description: Specify the bucket details in following format - BucketName,VersioningConfiguration(Enabled | Suspended), ExpirationDays & NonCurrentVersionExpirationDays (eg-Value1,Value2,Value3).
+  CloudFrontWafId:
+    Type: String
+    Description: Enter CloudFrontWafId to be stored in Parameter Store.
+  RegionalWafId:
+    Type: String
+    Description: Enter RegionalWafId to be stored in Parameter Store.
+  ResourceNamePrefixInSmallLetters:
+    Type: String
+    Description: Enter Prefix for Resource Names in lowercase.
+  EnvironmentTypeInSmallLetters:
+    Type: String
+    Description: Name your EnvironmentType according to need in lowercase.
+  ServerlessSgId:
+    Type: String
+    Description: Enter the ID of Serverless Security Group.
+  AppSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: A List of two subnet IDs in your environment VPC.
+  ClusterName:
+    Type: String
+    Description: Enter the ECS ClusterName.
+  S3AccessLogLocalBucketName:
+    Type: CommaDelimitedList
+    Description: 'Enter the Bucket values in this format BucketName, BucketStatus, ExpirationInDays, NoncurrentVersionExpirationInDays, Versioning [eg MyBucketName,CREATE,180,90,Enabled]'
+  RepTargetBucketName:
+    Type: String
+    Description: Enter the Target S3 Bucket Name of the Centralized/Security Account to store logs.
+  RepTargetAccountId:
+    Type: Number
+    Description: Enter the Target AWS Account ID to transfer logs to Destination/Target Bucket.
+  RMABucketName:
+    Type: CommaDelimitedList
+    Description: Specify the bucket details in following format - BucketName,VersioningConfiguration(Enabled | Suspended), ExpirationDays & NonCurrentVersionExpirationDays (eg-Value1,Value2,Value3).
+  GithubTokenSecretName:
+    Type: String
+    Description: Enter GitHub token secret name.
+  SonarSecretName:
+    Type: String
+    Description: Enter Sonar Secret name.
+  FileMappingBaseAmiId:
+    Type: String
+    Description: Enter the AmiId that will be updated in the SSM Parameter store.
+  DbDwhSubscriptions:
+    Type: CommaDelimitedList
+    Description: Enter the list of email subscribers to the sns topic.
+  DbDwhResourceRestrictionArn:
+    Type: CommaDelimitedList
+    Description: Enter the Arn of the resource to which the Sns Topic is to assign.
+  DocumentVersion:
+    Type: String
+    Description: Enter the version number to be considered by SSM Automation Document whenever the document is triggered. If DEFAULT is provided the initial version of document will be always considered. If LATEST is provided the document with latest version will be always considered. If numbers from 1 to 99 is provided the specified version of document will be considered.
+    AllowedPattern: "([$]LATEST|[$]DEFAULT|^[1-9][0-9]*$)"
+  CrossAccountId:
+    Type: String
+    Description: Enter Pci Prod Account Id for Test DWH Bucket to access Demo & Prod DWH Lambdas.
+  AllowedLambdaRoles:
+    Type: CommaDelimitedList
+    Description: Enter the Amazon Resource Name ARN of Demo & Prod DWH Lambdas to restrict in bucket policy.
+  ApiAccessLogSecBucketName:
+    Type: String
+    Description: Enter the Target S3 Bucket Name of the Centralized/Security Account to store api logs.
+Conditions:
+  IsNewBucketRequired: !Equals [CREATE, !Select [1, !Ref S3AccessLogLocalBucketName]]
+  IsLoggingEnabled: !Not [!Equals ['', !Select [0, !Ref S3AccessLogLocalBucketName]]]
+  EmailId0: !Equals [ !Select [ 0, !Ref DbDwhSubscriptions ], "None" ]
+  EmailId1: !Equals [ !Select [ 1, !Ref DbDwhSubscriptions ], "None" ]
+  EmailId2: !Equals [ !Select [ 2, !Ref DbDwhSubscriptions ], "None" ]
+  EmailId3: !Equals [ !Select [ 3, !Ref DbDwhSubscriptions ], "None" ]
+  EmailId4: !Equals [ !Select [ 4, !Ref DbDwhSubscriptions ], "None" ]
+  IsCrossAccPrmsnRequired: !Not [!Equals ['None', !Ref CrossAccountId]]
+Resources:
+  SprdEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Sprd-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Sprd-ECR-ImageTagStore'
+        ApplicationRole: 'Sprd-Tags-ParameterStore'
+        ApplicationID: 'Sprd'
+  RprtEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Rprt-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Rprt-ECR-ImageTagStore'
+        ApplicationRole: 'Rprt-Tags-ParameterStore'
+        ApplicationID: 'Rprt'
+  AdmnEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Admn-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Admn-ECR-ImageTagStore'
+        ApplicationRole: 'Admn-Tags-ParameterStore'
+        ApplicationID: 'Admn'
+  EntyEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Enty-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Enty-ECR-ImageTagStore'
+        ApplicationRole: 'Enty-Tags-ParameterStore'
+        ApplicationID: 'Enty'
+  AutzEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Autz-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Autz-ECR-ImageTagStore'
+        ApplicationRole: 'Autz-Tags-ParameterStore'
+        ApplicationID: 'Autz'
+  InferenceEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Inference-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Inference-ECR-ImageTagStore'
+        ApplicationRole: 'Inference-Tags-ParameterStore'
+        ApplicationID: 'Inference'
+  RetrainEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Retrain-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Retrain-ECR-ImageTagStore'
+        ApplicationRole: 'Retrain-Tags-ParameterStore'
+        ApplicationID: 'Retrain'
+  FilemappingBaseAMIIdparameterTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing AMIId, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-FileMapping-Base-Ami-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: !Ref FileMappingBaseAmiId
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-FileMapping-Base-Ami-Tag-Store'
+        ApplicationRole: 'FileMapping-BaseAmi-Tags-ParameterStore'
+        ApplicationID: 'FileMapping-Base-Ami'
+  ELBAccessLogBucketParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing value for '${EnvironmentType}-ELBAccessLogBucket'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CS-Storage-ELBAccessLogBucketName'
+      Tier: Standard
+      Type: String
+      Value: !Ref ELBAccessLogBucketName
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CS-Storage-ELBAccessLogBucketName'
+        ApplicationRole: !Sub 'CS-Storage-ELBAccessLogBucketName'
+  CDNAccessLogBucketParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing value for '${EnvironmentType}-CDNAcessLogBucket'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CS-Storage-CDNAccessLogBucketName'
+      Tier: Standard
+      Type: String
+      Value: !Ref CDNAccessLogBucketName
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CS-Storage-CDNAccessLogBucketName'
+        ApplicationRole: !Sub 'CS-Storage-CDNAccessLogBucketName'
+  BuildLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CodeBuild-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays  
+  BuildLogGroupParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing value for '${EnvironmentType}-BuildLogGroup'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Management-BuildLogGroupName'
+      Tier: Standard
+      Type: String
+      Value: !Ref BuildLogGroup
+  RegionalWafParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing !Sub '${EnvironmentType}-ALB/ApiGateway-WafId'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Security-RegionalWafId'
+      Tier: Standard
+      Type: String
+      Value: !Ref RegionalWafId
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Security-RegionalWafId'
+        ApplicationRole: !Sub 'Infra-Security-RegionalWafId'
+  CloudFrontWafIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing !Sub '${EnvironmentType}-CloudFront-WafId'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Security-CdnWafId'
+      Tier: Standard
+      Type: String
+      Value: !Ref CloudFrontWafId
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Security-CdnWafId'
+        ApplicationRole: !Sub 'Infra-Security-CdnWafId'    
+  CloudwatchRetentionDaysParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing environment wise cloudwatch retention days'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CloudWatch-Log-Retention-Days'
+      Tier: Standard
+      Type: String
+      Value: !Ref CloudwatchRetentionDays
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Sprd-ECR-ImageTagStore'
+        ApplicationRole: 'CloudwatchRetentionDays-ParameterStore'
+        ApplicationID: 'CWR'
+  PsqlBackupEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-PsqlBackup-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-PsqlBackup-ECR-ImageTagStore'
+        ApplicationRole: 'PsqlBackup-Tags-ParameterStore'
+        ApplicationID: 'PsqlBackup'
+  ArtifactBucket:
+    Type: AWS::S3::Bucket      
+    Properties:
+      BucketName: !Select [ 0, !Ref ArtifactBucketName]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: !Select [ 1, !Ref ArtifactBucketName]
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [ 2, !Ref ArtifactBucketName]
+            NoncurrentVersionExpirationInDays: !Select [ 3, !Ref ArtifactBucketName]
+            Status: Enabled
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-Delete-Rule'
+      LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !If [ IsNewBucketRequired, !Ref LoggingBucket, !Select [ 0, !Ref S3AccessLogLocalBucketName] ]
+            LogFilePrefix: !Join 
+              - ''
+              - - !Sub '${AWS::AccountId}'
+                - '/'
+                - !Select [ 0, !Ref ArtifactBucketName]
+                - '/'
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ArtifactsBucket'
+        - Key: ApplicationRole
+          Value: Dev-ArtifactsBucket
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: ArtifactBucket
+    Properties:
+      Bucket: !Select [ 0, !Ref ArtifactBucketName]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref ArtifactBucketName]
+                  - '/*'
+              - !Join
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref ArtifactBucketName]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  StackDeploymentParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: In this parameter we are storing value for '${EnvironmentType}-StackDeployment'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-StackDeployment-ArtifactsBucket'
+      Tier: Standard
+      Type: String
+      Value: !Ref StackDeploymentBucketName
+      Tags:
+        Name: StackDeployment-ArtifactsBucket
+        ApplicationRole: StackDeployment-SSM
+  CommonPipelineManagedPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonMgdPlcy'
+      Path: /
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'logs:CreateLogGroup'
+            Resource: 
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-CodeBuild-Logs*'
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-CodeBuild-Logs*:log-stream:*-UnitTest'
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-CodeBuild-Logs*:log-stream:*-Build'
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:GetObjectVersion'
+              - 's3:PutObject'
+              - 's3:ListBucket'
+              - 's3:GetBucketVersioning'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-pipeline-artifacts/*'
+              - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-pipeline-artifacts'
+          - Effect: Allow
+            Action:
+              - 'ssm:GetParameter'
+              - 'ssm:GetParameters'
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+          - Effect: Allow
+            Action: 'ec2:CreateNetworkInterfacePermission'
+            Resource: !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
+          - Effect: Allow 
+            Action: 'secretsmanager:GetSecretValue'
+            Resource: 
+              - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GithubTokenSecretName}-*'
+              - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SonarSecretName}-*'
+          - Effect: Allow
+            Action: 'ec2:CreateNetworkInterface'
+            Resource: 
+              - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
+              - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${ServerlessSgId}'
+              - !Sub 
+                - >-
+                  arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${Subnet}
+                - Subnet: !Select
+                  - 0
+                  - !Ref AppSubnetIds
+              - !Sub 
+                - >-
+                  arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${Subnet}
+                - Subnet: !Select
+                  - 1
+                  - !Ref AppSubnetIds
+          - Effect: Allow
+            Action:
+              - 'ec2:DescribeVpcs'
+              - 'ec2:DescribeSecurityGroups'
+              - 'ec2:DescribeSubnets'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DescribeNetworkInterfaces'
+              - 'ec2:DescribeDhcpOptions'
+            Resource: "*"
+  CommonSamBuildRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonSamBuildRole'
+      Description: A IAM Role to create CodeBuildProjects for MicroServices.
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonSamBuildRole'
+        - Key: ApplicationRole
+          Value: 'CommonSamBuild-Role'
+      Path: /
+      ManagedPolicyArns:
+        - !Ref CommonPipelineManagedPolicy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 'sts:AssumeRole'
+            Principal: 
+              Service: 'codebuild.amazonaws.com'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonSamBuildPlcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 's3:GetObject'
+                Resource: !Sub 'arn:aws:s3:::${StackDeploymentBucketName}/${EnvironmentType}/source_code/code_build/sam_parameter_override/sam_template_parameter_override_script.sh'
+              - Effect: Allow
+                Action: 's3:PutObject'
+                Resource: !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}*'
+  CommonCodePipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonCodePipeline-Role'
+      Description: AN IAM Role to create CodePipeline Resources.
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonCodePipeline-Role'
+        - Key: ApplicationRole
+          Value: 'CommonCodePipeline-Role'
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 'sts:AssumeRole'
+            Principal:
+              Service: 'codepipeline.amazonaws.com'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-CommonCodePipelinePlcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:ListBucket'
+                  - 's3:GetBucketVersioning'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-pipeline-artifacts/*'
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-pipeline-artifacts'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:CreateChangeSet'
+                  - 'cloudformation:ExecuteChangeSet'
+                  - 'cloudformation:DeleteChangeSet'
+                  - 'cloudformation:DescribeChangeSet'
+                  - 'cloudformation:SetStackPolicy'
+                  - 'cloudformation:ValidateTemplate'
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-SDGrp-SAM-CF-Role'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-CommonSamBuildRole'
+              - Effect: Allow
+                Action:
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuilds'
+                Resource: 
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ResourceNamePrefix}-${EnvironmentType}-*-CodeBuildProject'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ResourceNamePrefix}-${EnvironmentType}-*-UnitTest-CodeBuildProject'
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Condition: IsNewBucketRequired
+    Properties:
+      BucketName: !Select [ 0, !Ref S3AccessLogLocalBucketName]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: !Select [ 4, !Ref S3AccessLogLocalBucketName]
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [ 2, !Ref S3AccessLogLocalBucketName]
+            NoncurrentVersionExpirationInDays: !Select [ 3, !Ref S3AccessLogLocalBucketName]
+            Status: Enabled
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-Delete-Rule'
+      ReplicationConfiguration:
+        Role: !GetAtt LoggingBucketRole.Arn
+        Rules:
+          - Status: Enabled
+            Id: ReplicationRule01
+            Prefix: !Sub '${AWS::AccountId}'
+            Destination:
+              AccessControlTranslation:
+                Owner: Destination
+              Bucket: !Sub 'arn:aws:s3:::${RepTargetBucketName}'
+              Account: !Ref RepTargetAccountId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3AccessLoggingBucket'
+        - Key: ApplicationRole
+          Value: Dev-S3AccessLoggingBucket
+  LoggingBucketRole:
+    Type: AWS::IAM::Role
+    Condition: IsNewBucketRequired
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3AccessLog-Replication-Role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: 's3.amazonaws.com'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3AccessLog-Replication-Role'
+        - Key: ApplicationRole
+          Value: Dev-S3AccessLog-Replication-Role
+  LoggingBucketPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: IsNewBucketRequired
+    Properties:
+       Roles:
+        - !Ref LoggingBucketRole 
+       PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3AccessLog-Replication-Plcy'
+       PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 's3:Get*'
+              - 's3:ListBucket'
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Ref S3AccessLogLocalBucketName]
+                - '/*'
+          - Action:
+              - 's3:ReplicateObject'
+              - 's3:ReplicateDelete'
+              - 's3:ReplicateTags'
+              - 's3:GetObjectVersionTagging'
+              - 's3:ObjectOwnerOverrideToBucketOwner'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${RepTargetBucketName}/*'
+  LoggingBucketBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: IsNewBucketRequired
+    Properties:
+      Bucket: !Select [ 0, !Ref S3AccessLogLocalBucketName]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref S3AccessLogLocalBucketName]
+                  - '/*'
+              - !Join
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref S3AccessLogLocalBucketName]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  DWHBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Select [ 0, !Ref DWHBucketName]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: !Select [ 1, !Ref DWHBucketName]
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [ 2, !Ref DWHBucketName]
+            NoncurrentVersionExpirationInDays: !Select [ 3, !Ref DWHBucketName]
+            Status: Enabled
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-Delete-Rule'
+      LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !If [ IsNewBucketRequired, !Ref LoggingBucket, !Select [ 0, !Ref S3AccessLogLocalBucketName] ]
+            LogFilePrefix: !Join
+              - ''
+              - - !Select [ 0, !Ref DWHBucketName]
+                - '/'
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-DWHBucket'
+        - Key: ApplicationRole
+          Value: Dev-DWHBucket
+  DWHBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: DWHBucket
+    Properties:
+      Bucket: !Select [ 0, !Ref DWHBucketName]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref DWHBucketName]
+                  - '/*'
+              - !Join
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref DWHBucketName]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          - !If
+            - IsCrossAccPrmsnRequired
+            - Effect: Allow
+              Principal:
+                AWS: "arn:aws:iam::409931768656:root"
+              Action: 
+                - s3:GetObject
+                - s3:ListBucket
+              Resource: 
+                - !Join
+                  - ''
+                  - - !Sub 'arn:aws:s3:::'
+                    - !Select [0, !Ref DWHBucketName]
+                - !Join
+                  - ''
+                  - - !Sub 'arn:aws:s3:::'
+                    - !Select [0, !Ref DWHBucketName]
+                    - '/*'
+              Condition:
+                StringEquals:
+                  "aws:SourceAccount": !Ref CrossAccountId
+            - !Ref "AWS::NoValue"
+          - !If
+            - IsCrossAccPrmsnRequired
+            - Effect: Allow
+              Principal: "*"
+              Action:
+                - s3:GetObject
+                - s3:ListBucket
+              Resource: 
+                - !Join
+                  - ''
+                  - - !Sub 'arn:aws:s3:::'
+                    - !Select [0, !Ref DWHBucketName]
+                - !Join
+                  - ''
+                  - - !Sub 'arn:aws:s3:::'
+                    - !Select [0, !Ref DWHBucketName]
+                    - '/*'
+              Condition:
+                ArnLike:
+                  "aws:PrincipalArn": !Ref AllowedLambdaRoles
+            - !Ref "AWS::NoValue"
+  WebdriverEcrImageTag:
+    Type: AWS::SSM::Parameter
+    Properties:
+      DataType: text
+      Description: 'In this parameter we are storing dynamic docker image tag, it will be resolved in infra template taskdefinition'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Webdriver-ECR-Image-Tag-Store'
+      Tier: Standard
+      Type: String
+      Value: 'UpdatedAfterBuildExecution'
+      Tags:
+        Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Webdriver-ECR-ImageTagStore'
+        ApplicationRole: 'Webdriver-Tags-ParameterStore'
+        ApplicationID: 'Webdriver'
+  RMABucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Select [ 0, !Ref RMABucketName]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: !Select [ 1, !Ref RMABucketName]
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [ 2, !Ref RMABucketName]
+            NoncurrentVersionExpirationInDays: !Select [ 3, !Ref RMABucketName]
+            Status: Enabled
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-Delete-Rule'
+      LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !If [ IsNewBucketRequired, !Ref LoggingBucket, !Select [ 0, !Ref S3AccessLogLocalBucketName] ]
+            LogFilePrefix: !Join
+              - ''
+              - - !Select [ 0, !Ref RMABucketName]
+                - '/'
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RMABucket'
+        - Key: ApplicationRole
+          Value: Dev-RMABucket
+  RMABucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: RMABucket
+    Properties:
+      Bucket: !Select [ 0, !Ref RMABucketName]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref RMABucketName]
+                  - '/*'
+              - !Join
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref RMABucketName]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  DbDwhSnsTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-DBDWH-Grant-Topic'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-DBDWH-Grant-Topic'
+        - Key: ApplicationRole
+          Value: DBDWH-Grant-Topic
+      TopicName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-DBDWH-Grant-Topic'
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - !If
+          - EmailId0
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 0, !Ref DbDwhSubscriptions ]
+            Protocol: email
+        - !If
+          - EmailId1
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 1, !Ref DbDwhSubscriptions ]
+            Protocol: email
+        - !If
+          - EmailId2
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 2, !Ref DbDwhSubscriptions ]
+            Protocol: email
+        - !If
+          - EmailId3
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 3, !Ref DbDwhSubscriptions ]
+            Protocol: email
+        - !If
+          - EmailId4
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 4, !Ref DbDwhSubscriptions ]
+            Protocol: email
+  DbDwhSnsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref DbDwhSnsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LambdaAccessAllowPolicy
+            Effect: Allow
+            Principal: '*'
+            Action: 'sns:Publish'
+            Resource: !Ref DbDwhSnsTopic
+            Condition:
+              StringLike:
+                aws:PrincipalArn: !Ref DbDwhResourceRestrictionArn
+  ECSForceDeploymentSsmD:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      Content:
+        schemaVersion: '0.3'
+        description: This SSM Document is used to restart ECS Service/Task in a ECS Cluster whenever Secrets mentioned in CWEventsRule gets rotated.
+        parameters:
+          ECSServiceName:
+            type: String
+            description: (required) Enter the name of ECS Service/Task to be restarted.
+          ClusterName:
+            type: String
+            description: (required) Enter the name of ECS Cluster in which the mentioned service requires restart.
+          ECSTaskDefinitionName:
+            type: String
+            description: (required) Enter the Task Definition of the mentioned ECS Service which requires restart.
+          ForceNewDeploymentValue:
+            type: Boolean
+            description: (required) Enter True to force new deployment on mentioned ECS Service & False when no force new deployment is required.
+        mainSteps:
+          - name: ECSTaskRestrt
+            action: 'aws:executeAwsApi'
+            description: This step is used to restart the mentioned ECS Service in the ECS Cluster after the secret gets rotated.
+            inputs:
+              Service: ecs
+              Api: update_service
+              service: '{{ ECSServiceName }}'
+              cluster: '{{ ClusterName }}'
+              taskDefinition: '{{ ECSTaskDefinitionName }}'
+              forceNewDeployment: '{{ ForceNewDeploymentValue }}'
+            maxAttempts: 2
+      DocumentFormat: YAML
+      DocumentType: Automation
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-ForceDeployment-SsmD'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-ForceDeployment-SsmD'
+        - Key: ApplicationId
+          Value: ECS-ForceDeployment-SsmD
+      TargetType: /AWS::ECS::Service
+      UpdateMethod: NewVersion
+      Requires:
+        - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-ForceDeployment-SsmD'
+          Version: !Ref DocumentVersion
+  ECSCWRuleRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn: ECSForceDeploymentSsmD
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-CWRule-Role'
+      Description: This IAM Role is used to provide necessary permission to CWEventsRule for calling SSM Start Automation Execution with the Automation Document being created with its defined parameters.
+      Path: /
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-CWRule-Role'
+        - Key: ApplicationRole
+          Value: ECS-CWRule-Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - 'ssm.amazonaws.com'
+                - 'events.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ECS-CWRule-Plcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'ssm:StartAutomationExecution'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/*'
+              - Effect: Allow
+                Action:
+                  - 'ecs:UpdateService'
+                  - 'ecs:UpdateTaskSet'
+                  - 'ecs:StartTask'
+                  - 'ecs:ExecuteCommand'
+                  - 'ecs:RunTask'
+                Resource:
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${ResourceNamePrefix}-${EnvironmentType}-*-TD:*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ClusterName}/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-set/${ClusterName}/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*-ECSRole'
+  ApiAccesslogsFirehoseDeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamType: DirectPut
+      DeliveryStreamName: !Sub 'amazon-apigateway-${ResourceNamePrefix}-${EnvironmentType}-ApiAccess-logs-Streaming-KinsFirehose'
+      S3DestinationConfiguration:
+        BucketARN: !Sub 'arn:aws:s3:::${ApiAccessLogSecBucketName}'
+        RoleARN: !GetAtt ApiAccesslogsFirehoseRole.Arn
+        Prefix: !Sub '${AWS::AccountId}/${EnvironmentType}/'
+        ErrorOutputPrefix: !Sub '${AWS::AccountId}/${EnvironmentType}/error/'
+        CompressionFormat: UNCOMPRESSED
+  ApiAccesslogsFirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Apilogs-Kins-Role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehosePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:ListMultipartUploadParts
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ApiAccessLogSecBucketName}'
+                  - !Sub 'arn:aws:s3:::${ApiAccessLogSecBucketName}/*'
+Outputs:
+  ApiAccesslogsFirehoseDeliveryStreamArn:
+    Description: The ARN of the Kinesis Data Firehose delivery stream
+    Value: !GetAtt ApiAccesslogsFirehoseDeliveryStream.Arn
+  SprdImageTagStoreName:
+    Description: SSM ParameterStore name for storing Sprd Image Dynamic Tag value.
+    Value: !Ref SprdEcrImageTag
+  RprtImageTagStoreName:
+    Description: SSM ParameterStore name for storing Rprt Image Dynamic Tag Value.
+    Value: !Ref RprtEcrImageTag
+  AdmnImageTagStoreName:
+    Description: SSM ParameterStore name for storing Admn Image Dynamic Tag Value.
+    Value: !Ref AdmnEcrImageTag
+  EntyImageTagStoreName:
+    Description: SSM ParameterStore name for storing Enty Iamge Dynamic Tag value.
+    Value: !Ref EntyEcrImageTag
+  AutzImageTagStoreName:
+    Description: SSM ParameterStore name for storing Autz Image Dynamic Tag value.
+    Value: !Ref AutzEcrImageTag
+  InferenceImageTagStoreName:
+    Description: SSM ParameterStore name for storing Inference Image Dynamic Tag value.
+    Value: !Ref InferenceEcrImageTag
+  RetrainImageTagStoreName:
+    Description: SSM ParameterStore name for storing Retrain Image Dynamic Tag value.
+    Value: !Ref RetrainEcrImageTag
+  FilemappingBaseAMIIdImageTagStoreName:
+    Description: SSM ParameterStore name for storing Filemapping Base AMI ID.
+    Value: !Ref FilemappingBaseAMIIdparameterTag
+  ELBAccessLogBucketParameterStore:
+    Description: SSM ParameterStore to store name of ELB AccessLogBucket.
+    Value: !Ref ELBAccessLogBucketName
+  CDNAccessLogBucketParameterStore:
+    Description: SSM ParameterStore to store name of CDN AccessLogBucket.
+    Value: !Ref CDNAccessLogBucketName
+  BuildLogGroupParameterStore:
+    Description: SSM ParameterStore to store dynamic names of CodeBuild Project.
+    Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Infra-Management-BuildLogGroupName'
+  RegionalWafParameterStore:
+    Description: SSM ParameterStore to store RegionalWafId.
+    Value: !Ref RegionalWafId
+  CloudFrontWafIdParameterStore:
+    Description: SSM ParameterStore to store CloudFrontWafId.
+    Value: !Ref CloudFrontWafId
+  CloudwatchRetentionDaysParameterStore:
+    Description: SSM ParameterStore to store CloudwatchRetentionDays.
+    Value: !Ref CloudwatchRetentionDays
+  StackDeploymentParameterStore:
+    Description: SSM ParameterStore to store StackDeploymentBucketName
+    Value: !Ref StackDeploymentBucketName
+  PsqlBackupImageTagStoreName:
+    Description: SSM ParameterStore name for storing PsqlBackup Image Dynamic Tag value.
+    Value: !Ref PsqlBackupEcrImageTag
+  PipelineArtifactBucketName:
+    Description: Common Artifacts Bucket Name to be used across Microservices.
+    Value: !Ref ArtifactBucket
+  CommonCodePipelineRoleName:
+    Description: Common CodePipeline Role to Create CodePipelines across services.
+    Value: !Ref CommonCodePipelineRole
+  CommonSamBuildRoleName:
+    Description: Common CodeBuild Role to Create BuildProject in Microservices.
+    Value: !Ref CommonSamBuildRole
+  CommonCodePipelineRoleArn:
+    Description: Common CodePipeline Role to Create CodePipelines across services.
+    Value: !GetAtt CommonCodePipelineRole.Arn
+  CommonSamBuildRoleArn:
+    Description: Common CodeBuild Role to Create BuildProject in Microservices.
+    Value: !GetAtt CommonSamBuildRole.Arn
+  S3AccessLogLocalBucketName:
+    Value: !Select [ 0, !Ref S3AccessLogLocalBucketName]
+    Description: S3 bucket name for logging bucket logs.
+  DWHBucket:
+    Value: !Ref DWHBucket
+    Description: S3 bucket name for dwh bucket.
+  WebdriverImageTagStoreName:
+    Description: SSM ParameterStore name for storing Admn Image Dynamic Tag Value.
+    Value: !Ref WebdriverEcrImageTag
+  DbDwhSnsTopic:
+    Value: !Ref DbDwhSnsTopic
+  ECSForceDeploymentSsmDName:
+    Description: SSM Automation Document name to pass in CloudWatch Events Rule.
+    Value: !Ref ECSForceDeploymentSsmD
+  ECSCWRuleRoleArn:
+    Description: CloudWatch Role to provide permissions to call CWEvent & trigger SSM Automation Document.
+    Value: !GetAtt ECSCWRuleRole.Arn

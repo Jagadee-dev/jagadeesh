@@ -1,0 +1,852 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:  AWS cloudformation template To create AWS CloudFront with failover Configuration.
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "CodePipeline Configurations"
+        Parameters: 
+          - GithubRepoName
+          - GithubTokenSecretName
+          - GithubBranchName
+          - GithubUser
+          - CodebuildEnvironment
+          - EnvironmentComputeType
+          - BuildImageVersion
+          - PipelineArtifactsBucketName
+          - S3ObjectRetentionDays
+          - InfraBuildProjectName
+          - SonarProjectName
+          - CloudFrontLoggingBucketName
+Parameters:
+  S3AccessLogBucketName:
+    Type: String
+    Description: Enter the name of the S3 Bucket, where s3 access logs will be stored.
+  CloudFrontLoggingBucketName: 
+    Type: String 
+    Description: (Optional) Enter the name of the S3 Bucket, where cloudfront logs will be stored..
+  Aliases:
+    Type: CommaDelimitedList
+    Description: specify alternative domain name
+  AllowedGeoLocations:
+    Type: CommaDelimitedList
+    Default: 'IN,US,SG,CA'
+    Description: A complex type that contains a Location element for each country in which you want CloudFront either to distribute your content whitelist.
+  PrimaryStaticWebsiteBucket:
+    Type: String
+    Description: The bucket is used to store the main data.
+  SecondaryStaticWebsiteBucket:
+    Type: String
+    Description: This is a backup bucket for PrimaryBucket.
+  WebAclArn:
+    Type: String
+    Description: Enter the Id of WAF Web acl v2 ARN for cloudfront.
+  PriceClass:
+    Type: String
+    Description: Select the price class for the Distribution. 100 --> US, Canada and Europe. 200 --> US, Canada, Europe, Asia and Africa. All--> All Edge Locations
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+  AcmCertificateArn:
+    Type: String
+    Description: the Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM) certificate.
+  EnableCloudFront:
+    Type: String
+    Description: Used to enable or disable the selected distribution.
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Default: Nds-Cync-Los
+    Description: Enter prefix for Resource Names
+  ServiceName:
+    Description: Microservice name
+    Type: String 
+    Default: Ui-Static-WebSite
+  PrimaryAssetsBucket:
+    Description: This Bucket is used to store the logos and symbols.
+    Type: String
+    Default: nds-cync-los-<env>-ui-assets-primary
+  SecondaryAssetsBucket:
+    Description: This Bucket is Backup Bucket for Primary Bucket.
+    Type: String
+    Default: nds-cync-los-<env>-ui-assets-secondary
+  PrimaryHelpDocumentBucket:
+    Description: Enter the HelpDocument s3 bucket origin name
+    Type: String
+    Default: nds-cync-los-<env>-ui-helpdocument-primary
+  SecondaryHelpDocumentBucket:
+    Description: This is the backup bucket for Primary bucket.
+    Type: String
+    Default: nds-cync-los-<env>-ui-helpdocument-secondary
+  CustomerPortalPrimaryBucketName:
+    Description: Specify the primary bucket name for customer portal service.
+    Type: String
+  CustomerPortalSecondaryBucketName:
+    Description: Specify the secondary bucket name for customer portal service.
+    Type: String
+Conditions:
+  IsLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName , '']]
+  IsCloudFrontLoggingEnabled: !Not [!Equals [ !Ref CloudFrontLoggingBucketName , '']]
+Resources:
+  StaticWebSiteBucketPrimary:
+      Type: 'AWS::S3::Bucket'
+      Properties:
+        Tags: 
+           - 
+             Key: Name
+             Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StaticWebSite'
+           -
+             Key: ApplicationRole
+             Value: !Sub '${ServiceName}-S3'
+        BucketName: !Ref PrimaryStaticWebsiteBucket
+        AccessControl: Private
+        LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Sub '${PrimaryStaticWebsiteBucket}/'
+          - !Ref "AWS::NoValue"
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: "TRUE"
+          BlockPublicPolicy: "TRUE"
+          IgnorePublicAcls: "TRUE"
+          RestrictPublicBuckets: "TRUE"
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+  StaticWebsiteBucketSecondary:
+      Type: 'AWS::S3::Bucket'
+      Properties:
+        Tags: 
+           - 
+             Key: Name
+             Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StaticWebSite'
+           -
+             Key: ApplicationRole
+             Value: !Sub '${ServiceName}-S3'
+        BucketName: !Ref SecondaryStaticWebsiteBucket
+        AccessControl: Private
+        LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Sub '${SecondaryStaticWebsiteBucket}/'
+          - !Ref "AWS::NoValue"
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: "TRUE"
+          BlockPublicPolicy: "TRUE"
+          IgnorePublicAcls: "TRUE"
+          RestrictPublicBuckets: "TRUE"
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+  AssetsBucketPrimary:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Assests'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-S3'
+      BucketName: !Ref PrimaryAssetsBucket
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${PrimaryAssetsBucket}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  
+  AssetsBucketSecondary:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Assests'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-S3'
+      BucketName: !Ref SecondaryAssetsBucket
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${SecondaryAssetsBucket}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  
+  HelpDocumentuBucketPrimary:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Help-Doc-StaticWebSite'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-S3'
+      BucketName: !Ref PrimaryHelpDocumentBucket
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${PrimaryHelpDocumentBucket}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  
+  HelpDocumentuBucketSecondary:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Help-Doc-StaticWebSite'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-S3'
+      BucketName: !Ref SecondaryHelpDocumentBucket
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${SecondaryHelpDocumentBucket}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  CustomerPortalPrimaryBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CustomerPortal-PrimaryBucket'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-CustomerPortal-PrimaryBucket'
+      BucketName: !Ref CustomerPortalPrimaryBucketName
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${CustomerPortalPrimaryBucketName}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256    
+  CustomerPortalSecondaryBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CustomerPortal-SecondaryBucket'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-CustomerPortal-SecondaryBucket'
+      BucketName: !Ref CustomerPortalSecondaryBucketName
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${CustomerPortalSecondaryBucketName}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256  
+  UIStaticWebsiteCFIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Nds-Cync-Los-Dev-UiStaticWebsiteCFIdentity              
+  UiStaticWebsiteOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties: 
+      OriginAccessControlConfig:
+          Name: !Sub '${EnvironmentType}-Ui-Static-WebSite-AccessControl'
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+  
+        
+  StaticWebsiteBucketPolicyPrimary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Ref PrimaryStaticWebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref PrimaryStaticWebsiteBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryStaticWebsiteBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryStaticWebsiteBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          
+                  
+  StaticWebsiteBucketPolicySecondary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - UIStaticWebsiteCFIdentity  
+    Properties:
+      Bucket: !Ref SecondaryStaticWebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref SecondaryStaticWebsiteBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryStaticWebsiteBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryStaticWebsiteBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          
+  AssetsBucketPolicyPrimary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - AssetsBucketPrimary
+    - UIStaticWebsiteCFIdentity  
+    Properties:
+      Bucket: !Ref PrimaryAssetsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref PrimaryAssetsBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryAssetsBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryAssetsBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  AssetsBucketPolicySecondary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - AssetsBucketSecondary
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Ref SecondaryAssetsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref SecondaryAssetsBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryAssetsBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryAssetsBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  HelpDocumentBucketPolicyPrimary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - HelpDocumentuBucketPrimary
+    - UIStaticWebsiteCFIdentity   #check this
+    Properties:
+      Bucket: !Ref PrimaryHelpDocumentBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref PrimaryHelpDocumentBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryHelpDocumentBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PrimaryHelpDocumentBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  HelpDocumentBucketPolicySecondary:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - HelpDocumentuBucketSecondary
+    - UIStaticWebsiteCFIdentity   
+    Properties:
+      Bucket: !Ref SecondaryHelpDocumentBucket
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref SecondaryHelpDocumentBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryHelpDocumentBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref SecondaryHelpDocumentBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  CustomerPortalPrimaryBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - UIStaticWebsiteCFIdentity   
+    Properties:
+      Bucket: !Ref CustomerPortalPrimaryBucketName
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref CustomerPortalPrimaryBucket
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref CustomerPortalPrimaryBucketName
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref CustomerPortalPrimaryBucketName
+            Condition:
+              Bool:
+                'aws:SecureTransport': false  
+  CustomerPortalSecondaryBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+    - UIStaticWebsiteCFIdentity   
+    Properties:
+      Bucket: !Ref CustomerPortalSecondaryBucketName
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref CustomerPortalSecondaryBucketName
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref CustomerPortalSecondaryBucketName
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref CustomerPortalSecondaryBucketName
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  CfDistributionForS3:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: 
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Tags: 
+       - 
+        Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CDN'
+       -
+        Key: ApplicationRole
+        Value: !Sub '${ServiceName}-CDN'
+      DistributionConfig:
+        Aliases: !Ref Aliases
+        OriginGroups:
+            Quantity: 3
+            Items:
+              - FailoverCriteria: 
+                  StatusCodes:
+                    Quantity: 6
+                    Items:
+                      - '403'
+                      - '404'
+                      - '500'
+                      - '502'
+                      - '503'
+                      - '504'
+                Id: StaticWebsiteGroup     
+                Members:
+                  Quantity: 2
+                  Items:
+                      - OriginId:  !Ref PrimaryStaticWebsiteBucket
+                      - OriginId:  !Ref SecondaryStaticWebsiteBucket
+
+              - FailoverCriteria: 
+                  StatusCodes:
+                    Quantity: 6
+                    Items:
+                      - '403'
+                      - '404'
+                      - '500'
+                      - '502'
+                      - '503'
+                      - '504'
+
+                Id: AssetsGroup     
+                Members:
+                  Quantity: 2
+                  Items:
+                      - OriginId:  !Ref PrimaryAssetsBucket
+                      - OriginId:  !Ref SecondaryAssetsBucket
+              
+              - FailoverCriteria: 
+                  StatusCodes:
+                    Quantity: 6
+                    Items:
+                      - '403'
+                      - '404'
+                      - '500'
+                      - '502'
+                      - '503'
+                      - '504'
+
+                Id: HelpDocumentGroup     
+                Members:
+                  Quantity: 2
+                  Items:
+                      - OriginId:  !Ref PrimaryHelpDocumentBucket
+                      - OriginId:  !Ref SecondaryHelpDocumentBucket
+              - FailoverCriteria: 
+                  StatusCodes:
+                    Quantity: 6
+                    Items:
+                      - '403'
+                      - '404'
+                      - '500'
+                      - '502'
+                      - '503'
+                      - '504'
+
+                Id: CustomerPortalOriginGroup
+                Members:
+                  Quantity: 2
+                  Items:
+                      - OriginId:  !Ref CustomerPortalPrimaryBucket
+                      - OriginId:  !Ref CustomerPortalSecondaryBucket
+            
+        Origins:
+          - DomainName: !Join [ ".", [!Ref PrimaryStaticWebsiteBucket, "s3.amazonaws.com"] ]
+            Id: !Ref PrimaryStaticWebsiteBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref SecondaryStaticWebsiteBucket, "s3.amazonaws.com"] ]
+            Id: !Ref SecondaryStaticWebsiteBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref PrimaryAssetsBucket, "s3.amazonaws.com"] ]
+            Id: !Ref PrimaryAssetsBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref SecondaryAssetsBucket, "s3.amazonaws.com"] ]
+            Id: !Ref SecondaryAssetsBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref PrimaryHelpDocumentBucket, "s3.amazonaws.com"] ]
+            Id: !Ref PrimaryHelpDocumentBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref SecondaryHelpDocumentBucket, "s3.amazonaws.com"] ]
+            Id: !Ref SecondaryHelpDocumentBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref CustomerPortalPrimaryBucket, "s3.amazonaws.com"] ]
+            Id: !Ref CustomerPortalPrimaryBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+          - DomainName: !Join [ ".", [!Ref CustomerPortalSecondaryBucket, "s3.amazonaws.com"] ]
+            Id: !Ref CustomerPortalSecondaryBucket
+            S3OriginConfig:
+                OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt UiStaticWebsiteOriginAccessControl.Id
+        DefaultCacheBehavior:
+          ForwardedValues:
+            QueryString: 'false'
+          TargetOriginId:  StaticWebsiteGroup
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+        Enabled: !Ref EnableCloudFront
+        CustomErrorResponses:
+        - ErrorCode: 403
+          ResponseCode: 200
+          ResponsePagePath: '/'
+        Logging:
+         !If
+          - IsCloudFrontLoggingEnabled
+          - Bucket: !Join [ "", [ !Ref CloudFrontLoggingBucketName, ".s3.amazonaws.com" ] ] 
+            Prefix: !Sub '${AWS::AccountId}/${EnvironmentType}/${ServiceName}/'
+            IncludeCookies: true
+          - !Ref "AWS::NoValue"
+        HttpVersion: 'http2and3'
+        Comment: "This distribution is for the Ui-Staticweb"
+        Restrictions:
+          GeoRestriction: 
+            Locations: !Ref AllowedGeoLocations
+              
+            RestrictionType: whitelist
+        DefaultRootObject: index.html
+        WebACLId: !Ref WebAclArn
+        PriceClass: !Ref PriceClass
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        CacheBehaviors:
+        - AllowedMethods: 
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          PathPattern: brands/*
+          SmoothStreaming: false
+          TargetOriginId: AssetsGroup
+          ViewerProtocolPolicy: redirect-to-https
+        - AllowedMethods: 
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          PathPattern: help/*
+          SmoothStreaming: false
+          TargetOriginId: HelpDocumentGroup
+          ViewerProtocolPolicy: redirect-to-https
+        - AllowedMethods: 
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          PathPattern: customerportal*
+          SmoothStreaming: false
+          TargetOriginId: CustomerPortalOriginGroup
+          ViewerProtocolPolicy: redirect-to-https
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt CustomerPortalFunction.FunctionARN
+  CustomerPortalFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      AutoPublish: true
+      FunctionCode: !Sub |
+        function handler(event) {
+            var request = event.request;
+            var requestUriArr = request.uri.split( "/" );
+            var occurance = requestUriArr.indexOf( "customerportal" );
+            if ( occurance >= 0 ) {
+                var lastIndex = requestUriArr.length - 1
+                var slicedArr = requestUriArr.slice( 0, occurance + 1 );
+                var lastPath = requestUriArr[ lastIndex ];
+                if ( occurance == lastIndex || !lastPath.includes( '.' ) ) {
+                    slicedArr.push( 'index.html' )
+                }
+                else {
+                    if ( requestUriArr.includes( 'fonts' ) ) {
+                        slicedArr.push( 'fonts' )
+                    }
+                    slicedArr.push( lastPath )
+                }
+                request.uri = slicedArr.join( "/" )
+            }
+            return request;
+        }
+      FunctionConfig:
+        Comment: Function will get the file which is inside the folder 
+        Runtime: cloudfront-js-1.0
+      Name: !Sub "${AWS::StackName}-CustomerPortalFunction"
+Outputs:
+  CloudFrontId:
+    Description: The CloudFront ID created as part of UI Static WebSite Stack.
+    Value: !Ref CfDistributionForS3

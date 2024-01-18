@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'This template creates cloudwatch rule and sns topic.Version 1.0 '
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups: 
+    - Label: 
+        default: "Naming Conventions"
+      Parameters: 
+      - ResourceNamePrefix
+      - EnvironmentType
+      - ServiceName
+    - Label: 
+        default: "PipelineErrorNotify Inputs"
+      Parameters: 
+      - SubscriptionEmailIds
+      - State
+      - EventPattern
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names
+  EnvironmentType:
+    Description: Name your EnvironmentType with name you want ex. Dev|Test|UAT|PROD|DEMO.
+    Type: String
+  State:
+    Type: String
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Description: Specify the rule status
+  EventPattern:
+    Type: String
+    Description: Specify event pattern in json format
+    Default: >-
+      {"source":["aws.codepipeline"],"detail-type":["CodePipeline Stage
+      Execution State Change"]}
+  ServiceName:
+    Type: String
+    Description: Enter the service name 
+  SubscriptionEmailIds: 
+    Type: CommaDelimitedList
+    Default: 'None,None,None,None,None'
+Conditions:
+  EmailId0: !Equals [ !Select [ 0, !Ref SubscriptionEmailIds ], "None" ]
+  EmailId1: !Equals [ !Select [ 1, !Ref SubscriptionEmailIds ], "None" ]
+  EmailId2: !Equals [ !Select [ 2, !Ref SubscriptionEmailIds ], "None" ]
+  EmailId3: !Equals [ !Select [ 3, !Ref SubscriptionEmailIds ], "None" ]
+  EmailId4: !Equals [ !Select [ 4, !Ref SubscriptionEmailIds ], "None" ]  
+Resources:
+  SNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-Topic'
+      TopicName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-Topic'
+      Subscription:
+      - !If
+          - EmailId0
+          - !Ref "AWS::NoValue"
+          - 
+            Endpoint: !Select [ 0, !Ref SubscriptionEmailIds ]
+            Protocol: email
+      - !If
+          - EmailId1
+          - !Ref "AWS::NoValue"
+          - 
+            Endpoint: !Select [ 1, !Ref SubscriptionEmailIds ]
+            Protocol: email
+      - !If
+          - EmailId2
+          - !Ref "AWS::NoValue"
+          - 
+            Endpoint: !Select [ 2, !Ref SubscriptionEmailIds ]
+            Protocol: email
+      - !If
+          - EmailId3
+          - !Ref "AWS::NoValue"
+          - 
+            Endpoint: !Select [ 3, !Ref SubscriptionEmailIds ]
+            Protocol: email
+      - !If
+          - EmailId4
+          - !Ref "AWS::NoValue"
+          - 
+            Endpoint: !Select [ 4, !Ref SubscriptionEmailIds ]
+            Protocol: email
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-Topic'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Pipeline-Error-Notify-Topic'        
+  SNSTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    DependsOn: SNSTopic
+    Properties:
+      PolicyDocument:
+        Id: SNS-Policy
+        Statement:
+          - Sid: AWSConfigSNSPolicy
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'SNS:Publish'
+            Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-Topic'            
+      Topics:
+        - !Ref SNSTopic
+  CloudWatchRule:
+    Type: 'AWS::Events::Rule'
+    DependsOn: SNSTopic
+    Properties:
+      Description: Event rule triggers the SNS topic when there's a pipeline failure to send the notification to the subscribers
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-CWRule'
+      EventPattern: !Ref EventPattern
+      State: !Ref State
+      Targets:
+        - Arn: !Ref SNSTopic
+          Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Error-Notify-Topic'
+          InputTransformer:
+            InputPathsMap:
+              pipeline: $.detail.pipeline
+              stage: $.detail.stage
+              state: $.detail.state
+            InputTemplate: |
+                "The pipeline <pipeline> <stage> stage has <state>."
+                "In case if the state is failed,error notification messages will be sent to the subscription email ids."
+                "Go to https://console.aws.amazon.com/codepipeline/home?region=us-east-1#/view/<pipeline>."
+                

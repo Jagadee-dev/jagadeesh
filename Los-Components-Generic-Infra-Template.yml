@@ -1,0 +1,2172 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:  "AWS cloudformation template To create AWS CloudFront with failover Configuration version 1.0."
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Naming Conventions"
+        Parameters: 
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+
+      -
+        Label:
+          default: "S3 Configurations"
+        Parameters:
+
+          - S3AccessLogBucketName
+          - CloudFrontLoggingBucketName
+          - PrimaryBucketValues
+          - SecondaryBucketValues
+
+      - 
+        Label: 
+          default: "CloudFront Parameters"
+        Parameters: 
+          - DistributionConfigValues
+          - DistributionConfigQuantity
+          - EnableCloudFront
+          - AcmCertificateArn
+          - PriceClass
+          - WebAclArn
+          - Aliases
+          - AllowedGeoLocations
+
+Parameters:
+  S3AccessLogBucketName:
+    Type: String
+    Description: Enter the name of the S3 Bucket, where s3 access logs will be stored.
+  CloudFrontLoggingBucketName: 
+    Type: String 
+    Description: (Optional) Enter the name of the S3 Bucket, where cloudfront logs will be stored..
+  Aliases:
+    Type: CommaDelimitedList
+    Description: specify alternative domain name
+  AllowedGeoLocations:
+    Type: CommaDelimitedList
+    Description: A complex type that contains a Location element for each country in which you want CloudFront either to distribute your content whitelist.Ex.'IN,US,SG,CA'
+  WebAclArn:
+    Type: String
+    Description: Enter the ID of clasic WAF (or) ARN of WAF v2 for cloudfront.
+  PriceClass:
+    Type: String
+    Description: Select the price class for the Distribution. 100 --> US, Canada and Europe. 200 --> US, Canada, Europe, Asia and Africa. All--> All Edge Locations
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+  AcmCertificateArn:
+    Type: String
+    Description: the Amazon Resource Name (ARN) of an AWS Certificate Manager (ACM) certificate.
+  EnableCloudFront:
+    Type: String
+    Description: Used to enable or disable the selected distribution.Ex.'true'
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names
+  ServiceName:
+    Description: Microservice name
+    Type: String 
+  #Added parameters
+  PrimaryBucketValues:
+    Type: CommaDelimitedList
+    Description: Mention primary bucket details in following format "bucketname:Purpose".Ex. (nds-cync-los-<env>-ui-assets-primary:Assets)
+    Default: 'N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N'
+  SecondaryBucketValues:
+    Type: CommaDelimitedList
+    Description: Mention secondary bucket details in following format "bucketname:Purpose".Ex. (nds-cync-los-<env>-ui-assets-secondary:Assets)
+    Default: 'N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N'
+  DistributionConfigQuantity:
+    Description: Mention the value of origin group quantity.(Minimum 1 and maximum 10)
+    Type: String 
+  DistributionConfigValues:
+    Type: CommaDelimitedList
+    Description: Mention primary bucket details in following format "OriginGroupId:DistibutionConfigPatternName".Ex. (HelpDocumentGroup:help)
+    Default: 'N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N,N:N'
+
+Conditions:
+  IsLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName , '']]
+  IsCloudFrontLoggingEnabled: !Not [!Equals [ !Ref CloudFrontLoggingBucketName , '']]
+  #Added
+  PrimaryBucketValues0Exists: !Not [!Equals [ !Select [0, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues1Exists: !Not [!Equals [ !Select [1, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues2Exists: !Not [!Equals [ !Select [2, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues3Exists: !Not [!Equals [ !Select [3, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues4Exists: !Not [!Equals [ !Select [4, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues5Exists: !Not [!Equals [ !Select [5, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues6Exists: !Not [!Equals [ !Select [6, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues7Exists: !Not [!Equals [ !Select [7, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues8Exists: !Not [!Equals [ !Select [8, !Ref PrimaryBucketValues], "N:N"]]
+  PrimaryBucketValues9Exists: !Not [!Equals [ !Select [9, !Ref PrimaryBucketValues], "N:N"]]
+
+  SecondaryBucketValues0Exists: !Not [!Equals [ !Select [0, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues1Exists: !Not [!Equals [ !Select [1, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues2Exists: !Not [!Equals [ !Select [2, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues3Exists: !Not [!Equals [ !Select [3, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues4Exists: !Not [!Equals [ !Select [4, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues5Exists: !Not [!Equals [ !Select [5, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues6Exists: !Not [!Equals [ !Select [6, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues7Exists: !Not [!Equals [ !Select [7, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues8Exists: !Not [!Equals [ !Select [8, !Ref SecondaryBucketValues], "N:N"]]
+  SecondaryBucketValues9Exists: !Not [!Equals [ !Select [9, !Ref SecondaryBucketValues], "N:N"]]
+
+  DistributionConfigValues0Exists: !Not [!Equals [ !Select [0, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues1Exists: !Not [!Equals [ !Select [1, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues2Exists: !Not [!Equals [ !Select [2, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues3Exists: !Not [!Equals [ !Select [3, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues4Exists: !Not [!Equals [ !Select [4, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues5Exists: !Not [!Equals [ !Select [5, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues6Exists: !Not [!Equals [ !Select [6, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues7Exists: !Not [!Equals [ !Select [7, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues8Exists: !Not [!Equals [ !Select [8, !Ref DistributionConfigValues], "N:N"]]
+  DistributionConfigValues9Exists: !Not [!Equals [ !Select [9, !Ref DistributionConfigValues], "N:N"]]
+
+
+  Bucket0Exists: !And [{'Condition': 'PrimaryBucketValues0Exists'}, {'Condition': 'SecondaryBucketValues0Exists'},{'Condition': 'DistributionConfigValues0Exists'}]
+  Bucket1Exists: !And [{'Condition': 'PrimaryBucketValues1Exists'}, {'Condition': 'SecondaryBucketValues1Exists'},{'Condition': 'DistributionConfigValues1Exists'}]
+  Bucket2Exists: !And [{'Condition': 'PrimaryBucketValues2Exists'}, {'Condition': 'SecondaryBucketValues2Exists'},{'Condition': 'DistributionConfigValues2Exists'}]
+  Bucket3Exists: !And [{'Condition': 'PrimaryBucketValues3Exists'}, {'Condition': 'SecondaryBucketValues3Exists'},{'Condition': 'DistributionConfigValues3Exists'}]
+  Bucket4Exists: !And [{'Condition': 'PrimaryBucketValues4Exists'}, {'Condition': 'SecondaryBucketValues4Exists'},{'Condition': 'DistributionConfigValues4Exists'}]
+  Bucket5Exists: !And [{'Condition': 'PrimaryBucketValues5Exists'}, {'Condition': 'SecondaryBucketValues5Exists'},{'Condition': 'DistributionConfigValues5Exists'}]
+  Bucket6Exists: !And [{'Condition': 'PrimaryBucketValues6Exists'}, {'Condition': 'SecondaryBucketValues6Exists'},{'Condition': 'DistributionConfigValues6Exists'}]
+  Bucket7Exists: !And [{'Condition': 'PrimaryBucketValues7Exists'}, {'Condition': 'SecondaryBucketValues7Exists'},{'Condition': 'DistributionConfigValues7Exists'}]
+  Bucket8Exists: !And [{'Condition': 'PrimaryBucketValues8Exists'}, {'Condition': 'SecondaryBucketValues8Exists'},{'Condition': 'DistributionConfigValues8Exists'}]
+  Bucket9Exists: !And [{'Condition': 'PrimaryBucketValues9Exists'}, {'Condition': 'SecondaryBucketValues9Exists'},{'Condition': 'DistributionConfigValues9Exists'}]
+
+#Added 10 primary and 10 secondary buckets along with policies
+Resources:
+  PrimaryBucket0:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues0Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket1:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues1Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket2:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues2Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket3:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues3Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket4:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues4Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket5:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues5Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket6:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues6Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket7:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues7Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value:  !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket8:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues8Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucket9:
+    Type: 'AWS::S3::Bucket'
+    Condition: PrimaryBucketValues9Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256  
+  SecondaryBucket0:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues0Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket1:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues1Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket2:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues2Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket3:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues3Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket4:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues4Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket5:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues5Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket6:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues6Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket7:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues7Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket8:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues8Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SecondaryBucket9:
+    Type: 'AWS::S3::Bucket'
+    Condition: SecondaryBucketValues9Exists
+    Properties:
+      BucketName: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+      Tags: 
+        - Key: Name
+          Value: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+        -
+          Key: ApplicationRole
+          Value: !Join 
+            - ''
+            - - !Sub '${ServiceName}-'
+              - !Select [ 1, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+              - '-Bkt'
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Join [ "", [ !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ] , "/"] ]
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  PrimaryBucketPolicy0:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues0Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy1:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues1Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com 
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy2:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues2Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy3:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues3Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy4:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues4Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy5:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues5Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy6:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues6Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy7:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues7Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy8:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues8Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PrimaryBucketPolicy9:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: PrimaryBucketValues9Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy0:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues0Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy1:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues1Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy2:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues2Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy3:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues3Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy4:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues4Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy5:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues5Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy6:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues6Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy7:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues7Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy8:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues8Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  SecondaryBucketPolicy9:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: SecondaryBucketValues9Exists
+    DependsOn:
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Bucket: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: 'CloudFront-Bucket-Policy-with-CF-Identity-BktPlcy'
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+                - /*
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  UIStaticWebsiteCFIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Nds-Cync-Los-Dev-UiStaticWebsiteCFIdentity
+  CmnComponentsWebsiteOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties: 
+      OriginAccessControlConfig:
+          Name: !Sub '${EnvironmentType}-Cmn-Components-WebSite-AccessControl'
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+  CfDistributionForS3:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: 
+    - UIStaticWebsiteCFIdentity
+    Properties:
+      Tags: 
+       - 
+        Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Cdn'
+       -
+        Key: ApplicationRole
+        Value: !Sub '${ServiceName}-CDN'
+      DistributionConfig:
+        Aliases: !Ref Aliases
+        OriginGroups:
+            Quantity: !Ref DistributionConfigQuantity
+            #added
+            Items:
+              - !If 
+                - Bucket0Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 0, !Ref DistributionConfigValues ] ] ]    
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket1Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 1, !Ref DistributionConfigValues ] ] ]     
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket2Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 2, !Ref DistributionConfigValues ] ] ]    
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket3Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 3, !Ref DistributionConfigValues ] ] ]    
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket4Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 4, !Ref DistributionConfigValues ] ] ]     
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket5Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 5, !Ref DistributionConfigValues ] ] ]    
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket6Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 6, !Ref DistributionConfigValues ] ] ]   
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket7Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 7, !Ref DistributionConfigValues ] ] ]    
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket8Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 8, !Ref DistributionConfigValues ] ] ]     
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+              - !If 
+                - Bucket9Exists
+                - FailoverCriteria: 
+                    StatusCodes:
+                      Quantity: 6
+                      Items:
+                        - '403'
+                        - '404'
+                        - '500'
+                        - '502'
+                        - '503'
+                        - '504'
+                  Id: !Select [ 0, !Split [ ':', !Select [ 9, !Ref DistributionConfigValues ] ] ]     
+                  Members:
+                    Quantity: 2
+                    Items:
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+                      - OriginId:  !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+                - !Ref "AWS::NoValue"
+        Origins:
+          - !If
+            - PrimaryBucketValues0Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 0, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - PrimaryBucketValues1Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 1, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - PrimaryBucketValues2Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 2, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - PrimaryBucketValues3Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 3, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+
+          - !If
+            - PrimaryBucketValues4Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 4, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - PrimaryBucketValues5Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 5, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+
+          - !If
+            - PrimaryBucketValues6Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 6, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+          - !If
+            - PrimaryBucketValues7Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 7, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+
+          - !If
+            - PrimaryBucketValues8Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ], "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 8, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - PrimaryBucketValues9Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ], "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 9, !Ref PrimaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+
+          - !If
+            - SecondaryBucketValues0Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 0, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"            
+          - !If
+            - SecondaryBucketValues1Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 1, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - SecondaryBucketValues2Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 2, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - SecondaryBucketValues3Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 3, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - SecondaryBucketValues4Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 4, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+          - !If
+            - SecondaryBucketValues5Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 5, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - SecondaryBucketValues6Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 6, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+          - !If
+            - SecondaryBucketValues7Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 7, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"
+          - !If
+            - SecondaryBucketValues8Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 8, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+          - !If
+            - SecondaryBucketValues9Exists
+            - DomainName: !Join [ ".", [!Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ] , "s3.amazonaws.com"] ]
+              Id: !Select [ 0, !Split [ ':', !Select [ 9, !Ref SecondaryBucketValues ] ] ]
+              S3OriginConfig:
+                OriginAccessIdentity: ''
+              OriginAccessControlId: !GetAtt CmnComponentsWebsiteOriginAccessControl.Id
+            - !Ref "AWS::NoValue"                
+        DefaultCacheBehavior:
+          ForwardedValues:
+            QueryString: 'false'
+          TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 0, !Ref DistributionConfigValues ] ] ]  
+          ViewerProtocolPolicy: redirect-to-https
+        Enabled: !Ref EnableCloudFront
+        CustomErrorResponses:
+        - ErrorCode: 403
+          ResponseCode: 200
+          ResponsePagePath: '/'
+        Logging:
+          !If
+          - IsCloudFrontLoggingEnabled
+          - Bucket: !Join [ "", [ !Ref CloudFrontLoggingBucketName, ".s3.amazonaws.com" ] ] 
+            Prefix: !Sub '${AWS::AccountId}/${EnvironmentType}/${ServiceName}/'
+            IncludeCookies: true  
+          - !Ref "AWS::NoValue"           
+        HttpVersion: 'http2'
+        Restrictions:
+          GeoRestriction: 
+            Locations: !Ref AllowedGeoLocations              
+            RestrictionType: whitelist
+        DefaultRootObject: index.html
+        WebACLId: !Ref WebAclArn
+        PriceClass: !Ref PriceClass
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2019
+        CacheBehaviors:
+          - !If
+            - DistributionConfigValues1Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 1, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 1, !Ref DistributionConfigValues ] ] ]  
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues2Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 2, !Ref DistributionConfigValues ] ] ]   , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 2, !Ref DistributionConfigValues ] ] ] 
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues3Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 3, !Ref DistributionConfigValues ] ] ]   , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 3, !Ref DistributionConfigValues ] ] ] 
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues4Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 4, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 4, !Ref DistributionConfigValues ] ] ]  
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues5Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 5, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 5, !Ref DistributionConfigValues ] ] ]   
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues6Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 6, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 6, !Ref DistributionConfigValues ] ] ]  
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues7Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 7, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 7, !Ref DistributionConfigValues ] ] ] 
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues8Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 8, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 8, !Ref DistributionConfigValues ] ] ]  
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue"              
+          - !If
+            - DistributionConfigValues9Exists
+            - AllowedMethods: 
+                - GET
+                - HEAD
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              PathPattern: !Join [ "", [ !Select [ 1, !Split [ ':', !Select [ 9, !Ref DistributionConfigValues ] ] ]  , "/*"] ]
+              SmoothStreaming: false
+              TargetOriginId: !Select [ 0, !Split [ ':', !Select [ 9, !Ref DistributionConfigValues ] ] ] 
+              ViewerProtocolPolicy: redirect-to-https
+            - !Ref "AWS::NoValue" 
+
+Outputs:
+  CloudFrontId:
+    Description: The CloudFront ID created as part of UI Static WebSite Stack.
+    Value: !Ref CfDistributionForS3
+  PrimaryBucket0BucketName:
+    Condition: PrimaryBucketValues0Exists
+    Value: !Ref PrimaryBucket0
+  PrimaryBucket1BucketName:
+    Condition: PrimaryBucketValues1Exists
+    Value: !Ref PrimaryBucket1
+  PrimaryBucket2BucketName:
+    Condition: PrimaryBucketValues2Exists
+    Value: !Ref PrimaryBucket2
+  PrimaryBucket3BucketName:
+    Condition: PrimaryBucketValues3Exists
+    Value: !Ref PrimaryBucket3
+  PrimaryBucket4BucketName:
+    Condition: PrimaryBucketValues4Exists
+    Value: !Ref PrimaryBucket4
+  PrimaryBucket5BucketName:
+    Condition: PrimaryBucketValues5Exists
+    Value: !Ref PrimaryBucket5
+  PrimaryBucket6BucketName:
+    Condition: PrimaryBucketValues6Exists
+    Value: !Ref PrimaryBucket6
+  PrimaryBucket7BucketName:
+    Condition: PrimaryBucketValues7Exists
+    Value: !Ref PrimaryBucket7
+  PrimaryBucket8BucketName:
+    Condition: PrimaryBucketValues8Exists
+    Value: !Ref PrimaryBucket8
+  PrimaryBucket9BucketName:
+    Condition: PrimaryBucketValues9Exists
+    Value: !Ref PrimaryBucket9
+  SecondaryBucket0BucketName:
+    Condition: SecondaryBucketValues0Exists
+    Value: !Ref SecondaryBucket0
+  SecondaryBucket1BucketName:
+    Condition: SecondaryBucketValues1Exists
+    Value: !Ref SecondaryBucket1
+  SecondaryBucket2BucketName:
+    Condition: SecondaryBucketValues2Exists
+    Value: !Ref SecondaryBucket2
+  SecondaryBucket3BucketName:
+    Condition: SecondaryBucketValues3Exists
+    Value: !Ref SecondaryBucket3
+  SecondaryBucket4BucketName:
+    Condition: SecondaryBucketValues4Exists
+    Value: !Ref SecondaryBucket4
+  SecondaryBucket5BucketName:
+    Condition: SecondaryBucketValues5Exists
+    Value: !Ref SecondaryBucket5
+  SecondaryBucket6BucketName:
+    Condition: SecondaryBucketValues6Exists
+    Value: !Ref SecondaryBucket6
+  SecondaryBucket7BucketName:
+    Condition: SecondaryBucketValues7Exists
+    Value: !Ref SecondaryBucket7
+  SecondaryBucket8BucketName:
+    Condition: SecondaryBucketValues8Exists
+    Value: !Ref SecondaryBucket8
+  SecondaryBucket9BucketName:
+    Condition: SecondaryBucketValues9Exists
+    Value: !Ref SecondaryBucket9
+

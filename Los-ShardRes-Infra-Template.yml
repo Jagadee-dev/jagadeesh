@@ -1,0 +1,270 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "This template creates the EcsCluster,NLB,CustomDomain and VPC link"
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Default: nds-cync-los
+    Description: Enter prefix for Resource Names
+  EnvironmentType:
+    Description: Name your EnvironmentType with name you want.
+    Type: String
+  ClusterName:
+    Type: String
+    Description: Please enter the name of the cluster in which the service has to be created.
+  AppPrivateSubnetIds:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Select the subnets in your selected VPC for creation of App LoadBalancer.
+  CertificateArn:
+    Type: String
+    Description: Arn of ACM certificate to create api gateway custom domain
+  ApiCustomDomain:
+    Type: String
+    Description: Define custom domain url for api gatway ex. api.xyz.com
+  EndpointType:
+    Type: String
+    Description: A list of endpoint types of an API (RestApi) or its custom domain name (DomainName).
+    Default: REGIONAL
+  ConfigBucketInputs:
+    Type: CommaDelimitedList
+    Description: Specify the bucket details in following format - BucketName,VersioningConfiguration(Enabled | Suspended), ExpirationDays & NonCurrentVersionExpirationDays. Specify None for Index 2 & 3 to skip LifeCycle Configuration creation. (eg-Value1,Value2,Value3).
+    Default: '<BucketName>,Enabled,90,90'
+  S3AccessLogBucketName:
+    Type: String
+    Description: Enter the name of S3 Bucket.
+  PinpointEmailId:
+    Type: String
+    Description: The email address for which you want to set the identity
+  AlbAccesslogBucketName:
+    Type: String
+    Description: Enter the name of AlbAccessLogBucket.
+  EnableClusterInsights:
+    Type: String
+    Default: enabled
+    Description: This parameter is used to turn on CloudWatch Container Insights for a cluster,If cluster insights are required, select "enabled". Otherwise, select "disabled".
+    AllowedValues: ["enabled", "disabled"]  
+  EmailVerifyRequired:
+    Type: String
+    AllowedValues: 
+    - true
+    - false
+  CustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to resources that are created when applied.'
+    Default: None,None,None,None,None
+Conditions:
+  EmailVerifyRequired: !Equals [!Ref EmailVerifyRequired, 'true']
+  S3AccessLoggingEnabled: !Not [!Equals [!Ref S3AccessLogBucketName, '']]
+  EnableCurrentVersionLifeCycle: !Not [ !Equals [!Select [ 2, !Ref ConfigBucketInputs], 'None'] ]
+  EnableNonCurrentVersionLifeCycle: !Not [ !Equals [!Select [ 3, !Ref ConfigBucketInputs], 'None'] ]
+  NoLifecycleConfig: !Or
+    - Condition: EnableCurrentVersionLifeCycle
+    - Condition: EnableNonCurrentVersionLifeCycle
+  ElbAccessLogEnabled: !Not [!Equals [!Ref AlbAccesslogBucketName, '']]
+  CustomTags0Exist: !Equals [ !Select [0, !Ref CustomTags], "None"]
+  CustomTags1Exist: !Equals [ !Select [1, !Ref CustomTags], "None"]
+  CustomTags2Exist: !Equals [ !Select [2, !Ref CustomTags], "None"]
+  CustomTags3Exist: !Equals [ !Select [3, !Ref CustomTags], "None"]
+  CustomTags4Exist: !Equals [ !Select [4, !Ref CustomTags], "None"]
+Resources:
+  AppCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-App-EcsClstr'
+      ClusterSettings:
+       - Name: containerInsights
+         Value: enabled
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-App-EcsClstr'
+        - Key: ApplicationRole
+          Value: App-EcsClstr  
+  AppNlb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Tags:
+        - Key: Name
+          Value: 
+            Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-Ecs-App-Nlb
+        - Key: ApplicationRole
+          Value: Ecs-Nlb
+        - !If 
+          - CustomTags0Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTags1Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTags2Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTags3Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTags4Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref CustomTags ] ] ]
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Ecs-App-Nlb'
+      Scheme: internal
+      Type: network
+      LoadBalancerAttributes:
+        - !If
+          - ElbAccessLogEnabled
+          - Key: access_logs.s3.enabled
+            Value: false
+          - Key: access_logs.s3.enabled
+            Value: true
+        - !If
+          - ElbAccessLogEnabled
+          - !Ref "AWS::NoValue"
+          - Key: access_logs.s3.enabled
+            Value: !Ref AlbAccesslogBucketName
+        - Key: load_balancing.cross_zone.enabled
+          Value: true
+        - Key: deletion_protection.enabled
+          Value: true
+      Subnets: !Ref AppPrivateSubnetIds
+  CustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties: 
+      RegionalCertificateArn: !Ref CertificateArn
+      DomainName: !Ref ApiCustomDomain
+      SecurityPolicy: 'TLS_1_2'
+      EndpointConfiguration: 
+        Types: 
+          - !Ref EndpointType
+      Tags: 
+        - Key: Name
+          Value: 
+            Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-CustomDomain
+        - Key: ApplicationRole
+          Value: ApiGW-CustDmn
+  VpcLink:
+    Type: 'AWS::ApiGateway::VpcLink'
+    DependsOn:
+    - AppNlb
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ApiGW-VpcLink'
+      TargetArns:
+        - !Ref AppNlb
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-ApiGW-VpcLink'
+        - Key: ApplicationRole
+          Value: ApiGW-VpcLink
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Select [ 0, !Ref ConfigBucketInputs]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: !Select [ 1, !Ref ConfigBucketInputs]
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LoggingConfiguration:
+        !If
+        - S3AccessLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub 
+            - '{AWS::AccountId}/${BucketName}/'
+            - BucketName: !Select [ 0, !Ref ConfigBucketInputs]
+        - !Ref "AWS::NoValue"
+      LifecycleConfiguration: !If
+        - NoLifecycleConfig
+        - Rules:
+          - !If 
+            - EnableCurrentVersionLifeCycle
+            - ExpirationInDays: !Select [ 2, !Ref ConfigBucketInputs]
+              Status: Enabled
+              Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-CurrentVersion-Rule'
+            - !Ref "AWS::NoValue"
+          - !If 
+            - EnableNonCurrentVersionLifeCycle
+            - NoncurrentVersionExpirationInDays: !Select [ 3, !Ref ConfigBucketInputs]
+              Status: Enabled
+              Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-S3Object-NonCurrentVersion-Rule'
+            - !Ref "AWS::NoValue"
+        - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Select [ 0, !Ref ConfigBucketInputs]
+        - Key: ApplicationRole
+          Value: Config-Bkt
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - ConfigBucket
+    Properties:
+      Bucket: !Select [ 0, !Ref ConfigBucketInputs]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref ConfigBucketInputs]
+                  - '/*'
+              - !Join
+                - ''
+                - - !Sub 'arn:aws:s3:::'
+                  - !Select [ 0, !Ref ConfigBucketInputs]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  PinpointApplication:
+    Type: AWS::Pinpoint::App
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-PinpointProject'
+      Tags: {"Name":"SharedRes-PinPoint","ApplicationRole": "PinpointProject"}
+  PinpointEmail:
+    Type: AWS::Pinpoint::EmailChannel
+    Properties: 
+      ApplicationId: !Ref PinpointApplication
+      Enabled: True
+      FromAddress: !Ref PinpointEmailId
+      Identity: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${PinpointEmailId}'
+  EmailIdentity:
+    Condition: EmailVerifyRequired
+    Type: AWS::SES::EmailIdentity
+    Properties: 
+      EmailIdentity: !Sub '${PinpointEmailId}'
+Outputs:
+  AppNlbArn:
+    Value: !Ref AppNlb
+  AppNlbName:
+    Value: !GetAtt AppNlb.LoadBalancerName
+  AppNlbEndpoint:
+    Value: !GetAtt AppNlb.DNSName
+  VpcLinkId:
+    Value: !Ref VpcLink
+  ApiGWCustDmn:
+    Value: !Ref CustomDomain
+  EcsClusterName:
+    Value: !Ref AppCluster
+  ConfigBucketName:
+    Value: !Ref ConfigBucket
+  ConfigBucketArn:
+    Value: !GetAtt ConfigBucket.Arn
+  PinPointId:
+    Value: !Ref PinpointApplication

@@ -1,0 +1,480 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This generic template includes creation of documentdb cluster and instance.Version 1.1'
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Naming Conventions"
+        Parameters: 
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      -
+        Label:
+          default: "SecurityGroup Configurations"
+        Parameters:
+          - DocDBEgressRules
+          - DocDBIngressRules
+          - VPCId
+          - DBSubnetIds
+      - 
+        Label: 
+          default: "DocDB Parameters"
+        Parameters: 
+          - EngineVersion
+          - MasterUsername
+          - AvailabilityZones
+          - DocDBNumberOfInstanceValues
+          - BackupRetentionPeriod
+          - InstanceClass
+Parameters:
+  EngineVersion:
+    Type: Number
+    Description: Enter the engine version(Ex.4.0)
+  VPCId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Enter the VPC ID. Needed for sg group creation.
+  MasterUsername:
+    Type: String
+    Description: Enter the master username of secret based authentication IAM authentication
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Select the environment value where you will provision this infra.
+  ServiceName:
+    Type: String
+    Description: "Specify the name of the service used by SecurityGroup"
+  DocDBIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. tcp:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  DocDBEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. tcp:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  AvailabilityZones:
+    Type: CommaDelimitedList
+    Description: Mention the availability zone
+    Default: 'N,N,N,N,N,N'
+  DocDBNumberOfInstanceValues:
+    Type: CommaDelimitedList
+    Description: Specify the values in the following formatt for DBInstanceIdentifier(Ex.0,1,2,3,4)
+    Default: 'N,N,N,N,N'
+  InstanceClass:
+    Type: String
+    Description: Enter instance class
+  BackupRetentionPeriod:
+    Type: Number 
+    Description: Mention the backup retention period
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: Mention the subnet ids required for cluster creation.
+    Default: 'N,N,N,N'
+
+Conditions:
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref DocDBIngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ]]], "sg" ]
+
+  Egress0Exist: !Equals [ !Select [ 0, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref DocDBEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ]]], "sg" ]
+
+  DocDBNumberOfInstanceValues0Exists: !Not [!Equals [ !Select [0, !Ref DocDBNumberOfInstanceValues], "N"]]
+  DocDBNumberOfInstanceValues1Exists: !Not [!Equals [ !Select [1, !Ref DocDBNumberOfInstanceValues], "N"]]
+  DocDBNumberOfInstanceValues2Exists: !Not [!Equals [ !Select [2, !Ref DocDBNumberOfInstanceValues], "N"]]
+  DocDBNumberOfInstanceValues3Exists: !Not [!Equals [ !Select [3, !Ref DocDBNumberOfInstanceValues], "N"]]
+  DocDBNumberOfInstanceValues4Exists: !Not [!Equals [ !Select [4, !Ref DocDBNumberOfInstanceValues], "N"]]
+Resources:
+  DocDBInstance0:
+    Type: AWS::DocDB::DBInstance
+    Condition: DocDBNumberOfInstanceValues0Exists
+    Properties:
+      AutoMinorVersionUpgrade: true
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: !Ref InstanceClass
+      DBInstanceIdentifier: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance'
+              - !Select [0, !Ref DocDBNumberOfInstanceValues ]
+      EnablePerformanceInsights: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance0'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-instance0' 
+  DocDBInstance1:
+    Type: AWS::DocDB::DBInstance
+    Condition: DocDBNumberOfInstanceValues1Exists
+    Properties:
+      AutoMinorVersionUpgrade: true
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: !Ref InstanceClass
+      DBInstanceIdentifier: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance'
+              - !Select [ 1, !Ref DocDBNumberOfInstanceValues ]
+      EnablePerformanceInsights: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance1'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-instance1'    
+  DocDBInstance2:
+    Type: AWS::DocDB::DBInstance
+    Condition: DocDBNumberOfInstanceValues2Exists
+    Properties:
+      AutoMinorVersionUpgrade: true
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: !Ref InstanceClass
+      DBInstanceIdentifier: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance'
+              - !Select [ 2, !Ref DocDBNumberOfInstanceValues ]
+      EnablePerformanceInsights: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance2'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-instance2'  
+  DocDBInstance3:
+    Type: AWS::DocDB::DBInstance
+    Condition: DocDBNumberOfInstanceValues3Exists
+    Properties:
+      AutoMinorVersionUpgrade: true
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: !Ref InstanceClass
+      DBInstanceIdentifier: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance'
+              - !Select [ 3, !Ref DocDBNumberOfInstanceValues ]
+      EnablePerformanceInsights: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance3'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-instance3' 
+  DocDBInstance4:
+    Type: AWS::DocDB::DBInstance
+    Condition: DocDBNumberOfInstanceValues4Exists
+    Properties:
+      AutoMinorVersionUpgrade: true
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: !Ref InstanceClass
+      DBInstanceIdentifier: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance'
+              - !Select [ 4, !Ref DocDBNumberOfInstanceValues ]
+      EnablePerformanceInsights: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-instance4'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-instance4'      
+  DocDBCluster:
+    Type: "AWS::DocDB::DBCluster"
+    Properties:
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Join [ '', [ '{{resolve:secretsmanager:', !Ref MasterSecret, ':SecretString:password}}' ] ]
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      AvailabilityZones:
+        - !Select [0,!Ref AvailabilityZones]
+        - !Select [1,!Ref AvailabilityZones]
+      StorageEncrypted: true 
+      KmsKeyId: 'alias/aws/rds'
+      DBSubnetGroupName: !Ref DocDBSubnetGroup
+      DBClusterParameterGroupName: !Ref DocDBPramaterGroup
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      DBClusterIdentifier: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Clstr'
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Clstr'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-Cluster' 
+  MasterSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Master-Scrt
+      Description: 'Secret creation for document db'
+      GenerateSecretString:
+        SecretStringTemplate: !Join 
+            - ''
+            - - '{"username" : "'
+              - !Ref MasterUsername
+              - '"}'
+        GenerateStringKey: password
+        PasswordLength: 20
+        ExcludeCharacters: '"@/\`|'
+        ExcludeLowercase: false
+        ExcludeNumbers: false
+        ExcludePunctuation: true
+        ExcludeUppercase: false
+        IncludeSpace: false
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Master-Scrt'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-Master-Secret'
+  MasterSecretAttachment:
+    Type: 'AWS::SecretsManager::SecretTargetAttachment'
+    Properties:
+      SecretId: !Ref MasterSecret
+      TargetId: !Ref DocDBCluster
+      TargetType: 'AWS::DocDB::DBCluster'
+  DBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Allow inbound access to DocumentDB"
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBIngressRules ] ] ] ]
+
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBIngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBIngressRules ] ] ] ]
+      SecurityGroupEgress:
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref DocDBEgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref DocDBEgressRules ] ] ] ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-SecurityGroup' 
+  DocDBSubnetGroup:
+    Type: 'AWS::DocDB::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SubGrp'
+      DBSubnetGroupDescription: Subnet group for DocDB
+      SubnetIds:
+        - !Select [0, !Ref DBSubnetIds]
+        - !Select [1, !Ref DBSubnetIds]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SubGrp'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-SubnetGroup'
+  DocDBPramaterGroup:
+    Type: "AWS::DocDB::DBClusterParameterGroup"
+    Properties:
+      Description: "Parameter group for documentdb"
+      Family: "docdb5.0"
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ParGrp'
+      Parameters: 
+        audit_logs: "disabled"
+        tls: "enabled"
+        ttl_monitor: "enabled"
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ParGrp'
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-ParameterGroup'
+Outputs:
+  DocumentDBClusterIdentifier:
+    Value: !Ref DocDBCluster
+  DocumentDBClusterResourceId:
+    Value: !GetAtt DocDBCluster.ClusterResourceId
+  DocumentDBEndpoint:
+    Value: !GetAtt DocDBCluster.Endpoint
+  DocumentDBPort:
+    Value: !GetAtt DocDBCluster.Port
+  DocumentDBReadEndpoint:
+    Value: !GetAtt DocDBCluster.ReadEndpoint
+  DocumentDBMasterSecretName:
+    Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Master-Scrt'
+  DocumentDBMasterSecretArn:
+    Value: !Ref MasterSecret

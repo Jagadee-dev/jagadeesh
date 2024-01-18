@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create RDS in Single & Multiple AZs.This template is excecuted as part of Master Application.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "SecurityGroup Configurations"
+        Parameters:
+          - VpcId
+          - AdditionalSgIds
+          - RDSVpcTrafficSgRequired
+          - RDSIngressRules
+          - RDSEgressRules
+      - Label:
+          default: "DBSubnetGroup Configurations"
+        Parameters:
+          - DbSubnetIds
+          - DBSubnetGroupName
+      - Label:
+          default: "DBParameterGroup Configurations"
+        Parameters:
+          - ParameterGroupFamily
+          - DBParameterGroupName
+      - Label:
+          default: "RDSInstance Configurations"
+        Parameters:
+          - DBname
+          - DBInstanceParameters
+          - DBInstanceStorage
+          - DBInstanceConfiguration
+          - PreferredMaintenanceWindow
+          - MonitoringInterval
+          - RdsMasterSecretName
+          - BackupRetentionPeriod
+          - EnableCloudwatchLogsexports
+          - AvailabilityZone
+          - RdsCustomTags
+      - Label:
+          default: "RDS EventSubscription Configurations"
+        Parameters:
+          - NewEventSubscriptionRequired
+          - SourceType
+          - EventCategories
+          - RdsEventNotification
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Name your EnvironmentType According to your need.
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: A list of two subnet IDs in your environment VPC.
+  DBname:
+    Type: String
+    Description: Enter a DB name for RDS & it must begin with letter and can contain only alphanumeric characters.
+  DBInstanceParameters:
+    Type: CommaDelimitedList
+    Description: Enter true to create DeletionProtect,PubliclyAccessible,CopyTagsToSnapshot,DeployMultiAZ & false to avoid creation in this format [true,true,true,true].
+    AllowedValues: ["true", "false"]
+  DBInstanceStorage:
+    Type: CommaDelimitedList
+    Description: Enter the rds AllocatedStorage, MaxAllocatedStorage in this format [200,1000].
+    Default: "None,None"
+  DBInstanceConfiguration:
+    Type: CommaDelimitedList
+    Description: Enter the values for the Rds configuration DBInstanceClass, Engine, Port, StorageType, Iops in this format [db.r4.large,postgres,3306,io1,1000].
+    Default: "None,None,None,None,None"
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: A DBSubnetGroup to be associated with RDS Instance.
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      SubnetIds: !Ref DBSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-DBSubGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Rds-DBSubGrp'
+  DBParameterGroup:
+    Type: 'AWS::RDS::DBParameterGroup'
+    Properties:
+      Description: A DBParameterGroup to be associated with RDS Instance to store database.
+      Family: !Ref ParameterGroupFamily
+      DBParameterGroupName: !Ref DBParameterGroupName
+      Parameters:
+        rds.logical_replication: '1'
+        pgaudit.log: all
+        log_statement: all
+        log_min_duration_statement: '1000'
+        pgaudit.role: rds_pgaudit
+        rds.force_ssl: 0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-DBParGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Rds-DBParGrp'
+  DBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceIdentifier: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsClstr'
+      AllocatedStorage: !Select [0, !Ref DBInstanceStorage]
+      MaxAllocatedStorage: !Select [1, !Ref DBInstanceStorage]
+      DBInstanceClass: !Select [0, !Ref DBInstanceConfiguration]
+      Engine: !Select [1, !Ref DBInstanceConfiguration]
+      Port: !Select [2, !Ref DBInstanceConfiguration]
+      StorageType: !Select [3, !Ref DBInstanceConfiguration]
+      Iops: !Select [4, !Ref DBInstanceConfiguration]
+      EngineVersion: !Select [5, !Ref DBInstanceConfiguration]
+      DeletionProtection: !Select [0, !Ref DBInstanceParameters]
+      PubliclyAccessible: !Select [1, !Ref DBInstanceParameters]
+      CopyTagsToSnapshot: !Select [2, !Ref DBInstanceParameters]
+      MultiAZ: !Select [3, !Ref DBInstanceParameters]
+      MasterUsername: !Sub '{{resolve:secretsmanager:${RdsMasterSecretName}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${RdsMasterSecretName}:SecretString:password}}'
+      StorageEncrypted: 'true'
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      DBParameterGroupName: !Ref DBParameterGroupName
+      DBName: !Ref DBname
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      MonitoringInterval: !Ref MonitoringInterval
+      AvailabilityZone: !If [ IsMultiAz, !Ref "AWS::NoValue", !Ref AvailabilityZone ]
+      MonitoringRoleArn: !GetAtt RDSRole.Arn
+      EnableCloudwatchLogsExports: 
+        - !Ref EnableCloudwatchLogsexports
+      VPCSecurityGroups:
+        - !If [SGValue01, !GetAtt RDSSecurityGroup.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsInstance'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RdsInstance'
+        - !If 
+          - CustomTag0Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag1Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag2Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag3Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag4Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RdsCustomTags ] ] ]
+  RdsEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Condition: IsNewEventSubscriptionRequired
+    Properties: 
+      SnsTopicArn: !Ref RdsEventNotification
+      Enabled: true
+      SourceIds:
+        - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsClstr'
+      SourceType: !Ref SourceType
+      EventCategories: 
+        - !Ref EventCategories
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RDSSubscription'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RDSEvent'
+Outputs:
+  SecurityGroup:
+    Description: RDSSecurityGoup Id created part of template.
+    Value: !If [SGValue01, !GetAtt RDSSecurityGroup.GroupId, !Ref "AWS::NoValue"]
+  InstanceName:
+    Description: Name of the RDS Instance created.
+    Value: !Ref DBInstance
+  InstanceEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address
+  InstancePort:
+    Value: !Select [2, !Ref DBInstanceConfiguration]

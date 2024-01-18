@@ -1,0 +1,2176 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+    This template creates cf execution roles for 9 stack groups(DEPLOYMENT | NETWORK | COMMON | APPINFRA | DATABASE | SECRETS | MONITORING | LOGGING | BACKUP).
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - Label: 
+          default: "Naming Conventions"
+        Parameters: 
+          - ResourceNamePrefix
+          - EnvironmentType
+      - Label: 
+          default: "Naming Conventions (SMALL LETTERS)"
+        Parameters: 
+          - ResourceNamePrefixInSmallLetters
+          - EnvironmentTypeInSmallLetters
+      - Label: 
+          default: "Logging Bucket Names"
+        Parameters: 
+          - RedshiftAuditLoggingBucketName
+          - CdnAccessLoggingBucketName
+Parameters:
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names
+  ResourceNamePrefixInSmallLetters:
+    Description: Name your EnvironmentType in small letters according to your need.
+    Type: String
+  EnvironmentTypeInSmallLetters:
+    Type: String
+    Description: Enter prefix for Resource Names in small letters
+  RedshiftAuditLoggingBucketName:
+    Type: String
+  CdnAccessLoggingBucketName:
+    Type: String
+  GithubTokenSecretName:
+    Type: String
+Resources:
+  StackGroupsManagedPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      Description: Policy for creating a common access for stack groups.
+      ManagedPolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Common-Mgdplcy'
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 
+            - ec2:Describe*
+            - ec2:GetSubnetCidrReservations
+            Resource: '*'
+          - Effect: Allow
+            Action: 
+            - kms:DescribeKey
+            - kms:CreateGrant
+            - kms:RevokeGrant
+            - kms:RetireGrant
+            Resource: 
+            - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+      Roles:
+        - !Ref DeploymentGroupRole
+        - !Ref NetworkGroupRole
+        - !Ref CommonGroupRole
+        - !Ref AppInfraGroupRole
+        - !Ref DataBaseGroupRole
+        - !Ref SecretsGroupRole
+        - !Ref MonitoringGroupRole
+        - !Ref LoggingStackGroupRole
+        - !Ref BackupStackGroupRole
+        - !Ref SAMAssumeRole
+        - !Ref AppInfra2GroupRole
+
+  DeploymentGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Deployment-CF-Role'
+        Description: 'CF execution role which will be assume to create pipelines' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Deployment-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Deployment-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                - Effect: Allow
+                  Action: 
+                  - 'codepipeline:ListPipelines'
+                  Resource: '*'
+                - Effect: Allow
+                  Action: 
+                  - 'iam:PassRole'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:UpdateRole'
+                  - 'iam:GetRole'
+                  - 'iam:TagRole'
+                  - 'iam:UntagRole'
+                  - 'iam:ListRoleTags'
+                  - 'iam:UpdateAssumeRolePolicy'
+                  - 'iam:UpdateRoleDescription'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:CreateServiceLinkedRole'
+                  - 'iam:DeleteServiceLinkedRole'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:getRolePolicy'
+                  - 'iam:CreateInstanceProfile'
+                  - 'iam:RemoveRoleFromInstanceProfile'
+                  - 'iam:DeleteInstanceProfile'
+                  - 'iam:AddRoleToInstanceProfile'
+                  Resource: 
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - Effect: Allow
+                  Action:
+                  - 'codepipeline:GetPipeline'
+                  - 'codepipeline:GetPipelineState'
+                  - 'codepipeline:CreatePipeline'
+                  - 'codepipeline:DeletePipeline'
+                  - 'codepipeline:PutWebhook'
+                  - 'codepipeline:DeleteWebhook'
+                  - 'codepipeline:RegisterWebhookWithThirdParty'
+                  - 'codepipeline:DeRegisterWebhookWithThirdParty'
+                  - 'codepipeline:TagResource'
+                  - 'codepipeline:UntagResource'
+                  - 'codepipeline:UpdatePipeline'
+                  Resource:
+                  - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:*${EnvironmentType}-*'
+                  - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:webhook:${ResourceNamePrefix}-${EnvironmentType}-*'
+                - Effect: Allow
+                  Action:
+                  - 'codebuild:CreateProject'
+                  - 'codebuild:UpdateProject'
+                  - 'codebuild:DeleteProject'
+                  Resource: !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - Effect: Allow
+                  Action:
+                  - 'secretsmanager:GetSecretValue'
+                  Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GithubTokenSecretName}*'
+                - Effect: Allow
+                  Action:
+                  - 'ssm:GetParameter'
+                  - 'ssm:GetParameters'
+                  Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+  NetworkGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Network-CF-Role'
+      Description: 'CF execution role which will be assume to create network related resources' 
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Network-CF-Role'
+      - Key: ApplicationRole
+        Value: !Sub 'Network-CF-Role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action: 
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+      Path: /
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - ec2:DescribeFlowLogs
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - ec2:DeleteSubnet
+            - ec2:CreateTags
+            - ec2:CreateVpc
+            - ec2:CreateRouteTable
+            - ec2:DisassociateRouteTable
+            - ec2:DescribeVpcAttribute
+            - ec2:AllocateAddress
+            - ec2:AssociateRouteTable
+            - ec2:ModifyVpcAttribute
+            - ec2:CreateSubnet
+            - ec2:DeleteRoute
+            - ec2:DeleteVpc
+            - ec2:CreateNetworkAcl
+            - ec2:CreateNetworkAclEntry
+            - ec2:DeleteNetworkAcl
+            - ec2:DeleteNetworkAclEntry
+            - ec2:ReplaceNetworkAclAssociation
+            - ec2:ReplaceNetworkAclEntry
+            - ec2:DeleteRouteTable
+            - ec2:AuthorizeSecurityGroupEgress
+            - ec2:AuthorizeSecurityGroupIngress
+            - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+            - ec2:CreateSecurityGroup
+            - ec2:RevokeSecurityGroupEgress
+            - ec2:UpdateSecurityGroupRuleDescriptionsEgress
+            - ec2:ModifySecurityGroupRules
+            - ec2:RevokeSecurityGroupIngress
+            - ec2:DeleteSecurityGroup
+            - ec2:DeleteVpcEndpoints
+            - ec2:DeleteVpcEndpointConnectionNotifications            
+            - ec2:CreateVpcEndpointServiceConfiguration
+            - ec2:ModifyVpcEndpointServicePermissions
+            - ec2:ModifyVpcEndpointServiceConfiguration
+            - ec2:*VpcEndpoint
+            - ec2:DeleteVpcEndpointServiceConfigurations
+            - ec2:ModifyVpcEndpointConnectionNotification
+            - ec2:Get*
+            - ec2:*FlowLogs
+            Resource:
+            - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action:
+            - 'apigateway:POST'
+            - 'apigateway:DELETE'
+            - 'apigateway:PUT'
+            - 'apigateway:GET'
+            - 'apigateway:PATCH'
+            Resource:
+            - !Sub 'arn:aws:apigateway:${AWS::Region}::/*'
+          - Effect: Allow
+            Action:
+            - logs:DescribeLogGroups
+            Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:CreateLogGroup
+            - logs:DeleteLogStream
+            - logs:TagResource
+            - logs:DeleteLogGroup
+            Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:*'
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogDelivery'
+              - 'logs:DeleteLogDelivery'
+            Resource: "*"
+          - Effect: Allow
+            Action: 
+              - 'cloudformation:CreateChangeSet'
+            Resource: 
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+              - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/LanguageExtensions'
+          - Effect: Allow
+            Action:
+              - 'events:ListRules'
+              - 'events:ListRuleNamesByTarget'
+              - 'events:ListEventBuses'
+              - 'events:TestEventPattern'
+              - 'events:ListConnections'
+              - 'events:ListEndpoints'
+              - 'events:ListApiDestinations'
+              - 'events:ListArchives'
+              - 'events:ListEventSources'
+              - 'events:ListReplays'
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - 'events:ListTargetsByRule'
+              - 'events:DescribeRule'
+              - 'events:PutTargets'
+              - 'events:PutRule'
+              - 'events:EnableRule'
+              - 'events:DisableRule'
+              - 'events:DeleteEventBus'
+              - 'events:ListTagsForResource'
+              - 'events:RemoveTargets'
+              - 'events:DeleteRule'
+              - 'events:DescribeEventBus'
+            Resource: 
+              - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${ResourceNamePrefix}-${EnvironmentType}-*'
+          - Sid: 'IAMWrite'
+            Effect: Allow
+            Action: 
+            - 'iam:PassRole'
+            - 'iam:CreateRole'
+            - 'iam:DeleteRole'
+            - 'iam:UpdateRole'
+            - 'iam:GetRole'
+            - 'iam:TagRole'
+            - 'iam:UntagRole'
+            - 'iam:ListRoleTags'
+            - 'iam:UpdateAssumeRolePolicy'
+            - 'iam:UpdateRoleDescription'
+            - 'iam:AttachRolePolicy'
+            - 'iam:PutRolePolicy'
+            - 'iam:DetachRolePolicy'
+            - 'iam:CreateServiceLinkedRole'
+            - 'iam:DeleteServiceLinkedRole'
+            - 'iam:DeleteRolePolicy'
+            - 'iam:getRolePolicy'
+            Resource: 
+            - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+            - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+          - Effect: Allow
+            Action: 
+            - lambda:CreateEventSourceMapping
+            Resource: '*'
+          - Effect: Allow
+            Action: 
+            - lambda:CreateFunction
+            - lambda:TagResource
+            - lambda:UpdateEventSourceMapping
+            - lambda:InvokeFunction
+            - lambda:ListVersionsByFunction
+            - lambda:GetEventSourceMapping
+            - lambda:GetFunction
+            - lambda:PublishLayerVersion
+            - lambda:UpdateFunctionConfiguration
+            - lambda:UntagResource
+            - lambda:GetFunctionCodeSigningConfig
+            - lambda:UpdateAlias
+            - lambda:UpdateFunctionCode
+            - lambda:AddPermission
+            - lambda:ListTags
+            - lambda:GetRuntimeManagementConfig
+            - lambda:DeleteAlias
+            - lambda:PutFunctionEventInvokeConfig
+            - lambda:DeleteFunction
+            - lambda:PublishVersion
+            - lambda:DeleteEventSourceMapping
+            - lambda:RemovePermission
+            - lambda:CreateAlias
+            Resource:
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:event-source-mapping:*'
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:${ResourceNamePrefix}-${EnvironmentType}-*'
+          - Effect: Allow
+            Action: 
+            - s3:PutBucketNotification
+            - s3:PutBucketTagging
+            - s3:PutBucketVersioning
+            - s3:PutBucketPolicy
+            - s3:CreateBucket
+            - s3:DeleteBucket
+            - s3:PutBucketLogging
+            - s3:PutLifecycleConfiguration
+            - s3:PutReplicationConfiguration
+            - s3:GetLifecycleConfiguration
+            - s3:GetObjectVersion
+            - s3:PutEncryptionConfiguration
+            - s3:PutBucketPublicAccessBlock
+            - s3:DeleteBucketPolicy
+            - s3:GetBucketPolicy
+            Resource: 
+            - !Sub 'arn:aws:s3:::aws-waf-logs-${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}*'
+          - Effect: Allow
+            Action: 
+            - s3:Get*
+            Resource: 
+            - !Sub 'arn:aws:s3:::solutions*'
+            - !Sub 'arn:aws:s3:::los-sec*'
+          - Effect: Allow
+            Action: 
+            - waf-regional:CreateRuleGroup
+            Resource: '*'
+          - Effect: Allow
+            Action: 
+            - waf-regional:CreateRuleGroup
+            - waf-regional:UpdateRateBasedRule
+            - waf-regional:UpdateXssMatchSet
+            - waf-regional:UpdateIPSet
+            - waf-regional:GetLoggingConfiguration
+            - waf-regional:DeleteGeoMatchSet
+            - waf-regional:UpdateSqlInjectionMatchSet
+            - waf-regional:DeleteWebACL
+            - waf-regional:PutLoggingConfiguration
+            - waf-regional:DeleteRuleGroup
+            - waf-regional:DeleteRateBasedRule
+            - waf-regional:CreateGeoMatchSet
+            - waf-regional:DeleteSqlInjectionMatchSet
+            - waf-regional:CreateSqlInjectionMatchSet
+            - waf-regional:DeleteLoggingConfiguration
+            - waf-regional:DeleteXssMatchSet
+            - waf-regional:UpdateRule
+            - waf-regional:CreateWebACL
+            - waf-regional:UpdateWebACL
+            - waf-regional:CreateIPSet
+            - waf-regional:DeleteIPSet
+            - waf-regional:CreateRateBasedRule
+            - waf-regional:UpdateGeoMatchSet
+            - waf-regional:CreateXssMatchSet
+            - waf-regional:UpdateRuleGroup
+            - waf-regional:CreateRule
+            - waf-regional:DeleteRule
+            Resource: 
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:webacl/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:xssmatchset/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ratebasedrule/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:geomatchset/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:ipset/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:rulegroup/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:sqlinjectionset/*'
+            - !Sub 'arn:aws:waf-regional:${AWS::Region}:${AWS::AccountId}:rule/*'
+          - Effect: Allow
+            Action: 
+            - wafv2:TagResource
+            - wafv2:DeleteLoggingConfiguration
+            - wafv2:ListTagsForResource
+            - wafv2:PutLoggingConfiguration
+            - wafv2:DeleteRuleGroup
+            - wafv2:CreateRuleGroup
+            - wafv2:UpdateWebACL
+            - wafv2:DeleteWebACL
+            - wafv2:GetLoggingConfiguration
+            - wafv2:GetIPSet
+            - wafv2:UpdateRuleGroup
+            - wafv2:GetWebACL
+            - wafv2:CreateWebACL
+            - wafv2:GetRuleGroup
+            - wafv2:CreateIPSet
+            - wafv2:DeleteIPSet
+            - wafv2:UntagResource
+            - wafv2:UpdateIPSet
+            Resource: 
+            - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action: 
+            - wafv2:ListRuleGroups
+            - wafv2:ListWebACLs
+            - wafv2:ListLoggingConfigurations
+            - wafv2:ListIPSets
+            - wafv2:ListManagedRuleSets
+            Resource: '*'
+  CommonGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Common-CF-Role'
+        Description: 'CF execution role which will be assume to create common resources' 
+        Tags: 
+          - Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Common-CF-Role'
+          - Key: ApplicationRole
+            Value: !Sub 'Common-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service: cloudformation.amazonaws.com
+        Path: /
+        Policies:
+          - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+              - Effect: Allow
+                Action: 
+                  - s3:PutBucketNotification
+                  - s3:PutBucketTagging
+                  - s3:PutBucketVersioning
+                  - s3:*BucketPolicy
+                  - s3:*Bucket
+                  - s3:PutBucketLogging
+                  - s3:PutLifecycleConfiguration
+                  - s3:PutReplicationConfiguration
+                  - s3:GetLifecycleConfiguration
+                  - s3:GetObjectVersion
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:*BucketAcl
+                  - s3:PutBucketOwnershipControls
+                Resource: !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}*'
+              - Effect: Allow
+                Action: 
+                  - ssm:*Parameter
+                  - ssm:*Resource
+                  - ssm:GetParameters
+                  - ssm:*Document*
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
+              - Effect: Allow
+                Action: 
+                  - logs:DescribeLogStreams
+                  - logs:Describe*Filters
+                  - logs:GetLogEvents
+                  - logs:*LogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:*Resource
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:*'
+              - Effect: Allow
+                Action: 
+                  - firehose:DeleteDeliveryStream
+                  - firehose:CreateDeliveryStream
+                  - firehose:UpdateDestination
+                  - firehose:DescribeDeliveryStream
+                Resource:
+                  - !Sub 'arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/amazon-apigateway-${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                  - 'iam:PassRole'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:UpdateRole'
+                  - 'iam:GetRole'
+                  - 'iam:TagRole'
+                  - 'iam:UntagRole'
+                  - 'iam:UpdateAssumeRolePolicy'
+                  - 'iam:ListRoleTags'
+                  - 'iam:GetPolicy'
+                  - 'iam:UpdateRoleDescription'
+                  - 'iam:DeletePolicy'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:TagPolicy'
+                  - 'iam:CreatePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:ListPolicyVersions'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:UntagPolicy'
+                  - 'iam:ListPolicyTags'
+                  - 'iam:ListRolePolicies'
+                  - 'iam:GetRolePolicy'
+                  - 'iam:CreateServiceLinkedRole'
+                  - 'iam:CreatePolicyVersion'
+                  - 'iam:DeletePolicyVersion'
+                  - 'iam:GetPolicyVersion'
+                Resource: 
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                  - 'kms:*KeyRotation'
+                  - 'kms:*Resource'
+                  - 'kms:ListKeyPolicies'
+                  - 'kms:ScheduleKeyDeletion'
+                  - 'kms:DescribeKey'
+                  - 'kms:*Alias'
+                  - 'kms:PutKeyPolicy'
+                  - 'kms:ListResourceTags'
+                Resource:
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/*'
+              - Effect: Allow
+                Action: 
+                  - 'kms:ListKeys'
+                  - 'kms:CreateKey'
+                Resource: '*'
+              - Effect: Allow
+                Action: 
+                  - sns:Subscribe
+                  - sns:*Topic*
+                  - sns:*Resource
+                  - sns:Unsubscribe
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+  AppInfraGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-AppInfra-CF-Role'
+        Description: 'CF execution role which will be assume to create app infra' 
+        Tags: 
+          - Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-AppInfra-CF-Role'
+          - Key: ApplicationRole
+            Value: !Sub 'AppInfra-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service: cloudformation.amazonaws.com
+        Path: /
+        Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:SetSubscriptionAttributes
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'sns:Subscribe'
+                  - 'sns:*Topic*'
+                  - 'sns:*Resource'
+                  - 'sns:Unsubscribe'
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 'elasticloadbalancing:Describe*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:Create*'
+                  - 'elasticloadbalancing:Modify*'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                  - 'elasticloadbalancing:*Tags'
+                  - 'elasticloadbalancing:Delete*'
+                  - 'elasticloadbalancing:*Targets'
+                  - 'elasticloadbalancing:*Subnets'
+                Resource:
+                  - !Sub 'arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${EnvironmentType}-*'
+                  - !Sub 'arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:*${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'apigateway:POST'
+                  - 'apigateway:DELETE'
+                  - 'apigateway:PUT'
+                  - 'apigateway:GET'
+                  - 'apigateway:PATCH'
+                  - 'apigateway:SetWebACL'
+                Resource: !Sub 'arn:aws:apigateway:${AWS::Region}::*'
+              - Effect: Allow
+                Action: 'iam:*'
+                Resource: 
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'ecs:*TaskDefinition'
+                  - 'ecs:List*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ecs:*Cluster*'
+                  - 'ecs:*Resource'
+                  - 'ecs:*TaskSet'
+                  - 'ecs:*ContainerInstances*'
+                  - 'ecs:UpdateTaskProtection'
+                  - 'ecs:UpdateContainerAgent'
+                  - 'ecs:*Attributes'
+                  - 'ecs:*Service'
+                  - 'ecs:*CapacityProvider*'
+                  - 'ecs:DeleteTaskDefinitions'
+                  - 'ecs:DescribeServices'
+                Resource: 
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-set/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:capacity-provider/*'
+              - Effect: Allow
+                Action: 'ec2:Describe*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ec2:*VpcEndpointService*'
+                  - 'ec2:*SecurityGroup*'
+                  - 'ec2:*Tags'
+                  - 'ec2:*NetworkInterface*'
+                  - 'ec2:*LaunchTemplate*'
+                  - 'ec2:*Instances'
+                  - 'ec2:*IamInstanceProfile*'
+                  - 'ec2:ModifyInstanceAttribute'
+                Resource: 
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc-endpoint-service/*'
+                  - '*'
+              - Effect: Allow
+                Action: 's3:*BucketAcl'
+                Resource: !Sub 'arn:aws:s3:::${CdnAccessLoggingBucketName}*'
+              - Effect: Allow
+                Action:
+                  - 's3:*Bucket*'
+                  - 's3:*Configuration'
+                  - 's3:GetObjectVersion'
+                Resource: !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+              - Effect: Allow
+                Action:
+                  - 'cloudfront:*Function'
+                  - 'cloudfront:Delete*'
+                  - 'cloudfront:*OriginAccessControl*'
+                  - 'cloudfront:AssociateAlias'
+                  - 'cloudfront:*Resource'
+                  - 'cloudfront:Update*'
+                  - 'cloudfront:Create*'
+                  - 'cloudfront:GetDistribution'
+                  - 'cloudfront:GetCloudFrontOriginAccessIdentity'
+                Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:*'
+              - Effect: Allow
+                Action: 
+                  - 'logs:DescribeLogGroups'
+                Resource: "*"
+              - Effect: Allow
+                Action: 
+                  - 'logs:*LogStream*'
+                  - 'logs:*Filters'
+                  - 'logs:GetLogEvents'
+                  - 'logs:*LogGroup*'
+                  - 'logs:PutRetentionPolicy'
+                  - 'logs:*Resource'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'ecr:*Repository*'
+                  - 'ecr:*Resource'
+                  - 'ecr:*LifecyclePolicy'
+                  - 'ecr:Put*'
+                  - 'ecr:List*'
+                  - 'ecr:DescribeImages'
+                  - 'ecr:DescribeRepositories'
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:DeleteAlarms'
+                  - 'cloudwatch:Describe*'
+                  - 'cloudwatch:*MetricStream*'
+                  - 'cloudwatch:*Resource'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'cloudwatch:EnableAlarmActions'
+                Resource:
+                  - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:metric-stream/*'
+                  - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:insight-rule/*'
+              - Effect: Allow
+                Action: 'application-autoscaling:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'wafv2:AssociateWebACL'
+                  - 'wafv2:DisassociateWebACL'
+                  - 'wafv2:GetWebACL*'
+                Resource: !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action: 
+                  - 'ses:DeleteIdentity'
+                  - 'ses:ListIdentities'
+                  - 'ses:ListConfigurationSets'
+                  - 'ses:ListContactLists'
+                  - 'ses:ListEmail*'
+                  - 'ses:GetAccount'
+                  - 'ses:GetDeliverabilityDashboardOptions'
+                  - 'ses:GetIdentity*Attributes'
+                  - 'ses:GetSend*'
+                  - 'ses:ListReceipt*'
+                  - 'ses:DeleteIdentityPolicy'
+                  - 'ses:PutIdentityPolicy'
+                Resource: "*"
+              - Effect: Allow
+                Action: 
+                  - 'ses:SendEmail'
+                  - 'ses:*EmailIdentity'
+                  - 'ses:GetEmailIdentityPolicies'
+                Resource: 
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:dedicated-ip-pool/*'
+              - Effect: Allow
+                Action:
+                  - 'mobiletargeting:*App'
+                  - 'mobiletargeting:*Resource'
+                  - 'mobiletargeting:*EmailChannel'
+                Resource: !Sub 'arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*'
+              - Effect: Allow
+                Action: 
+                  - 'appsync:GetApiAssociation'
+                  - 'appsync:*GraphqlApi'
+                  - 'appsync:*AssociateApi'
+                  - 'appsync:*Resource'
+                  - 'appsync:*DomainName'
+                Resource: 
+                  - !Sub 'arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:domainnames/*'
+                  - !Sub 'arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*'
+              - Effect: Allow
+                Action: 
+                  - 'ssm:*Resource'
+                  - 'ssm:*MaintenanceWindow'
+                  - 'ssm:*MaintenanceWindowTask'
+                  - 'ssm:DescribeMaintenanceWindow*'
+                  - 'ssm:CancelMaintenanceWindowExecution'
+                  - 'ssm:UpdateMaintenanceWindowTarget' 
+                  - 'ssm:GetMaintenanceWindow*'
+                  - 'ssm:UpdateMaintenanceWindowTask'
+                  - 'ssm:*Parameter'
+                  - 'ssm:GetParameters'
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:maintenancewindow/*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:windowtask/*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*-Mgr-Plcy-Par'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*/idp_metadata.xml'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*/okta/app_id'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*/okta/token'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*/okta/url'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*/sp_metadata.xml'
+              - Effect: Allow
+                Action: 
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 'acm:DescribeCertificate'
+                Resource: !Sub 'arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/*'
+              - Effect: Allow
+                Action: 
+                  - 'kms:DescribeKey'
+                  - 'kms:CreateGrant'
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+              - Effect: Allow
+                Action:
+                  - 'autoscaling:*Tags'
+                  - 'autoscaling:PutScalingPolicy'
+                  - 'autoscaling:*AutoScalingGroup'
+                  - 'autoscaling:PutLifecycleHook'
+                  - 'autoscaling:*UpdateGroupAction'
+                  - 'autoscaling:*ScheduledAction'
+                Resource: !Sub 'arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${ResourceNamePrefix}-${EnvironmentType}*'
+              - Effect: Allow
+                Action: 'autoscaling:Describe*'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'elasticfilesystem:*'
+                Resource: !Sub 'arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:*/*'
+              - Effect: Allow
+                Action: 'sqs:*'
+                Resource: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'cognito-idp:DescribeUserPoolDomain'
+                  - 'cognito-idp:ListUserPools'
+                Resource: "*"    
+              - Effect: Allow
+                Action: 
+                  - 'cognito-idp:*UserPool'
+                  - 'cognito-idp:*Client'
+                  - 'cognito-idp:*Resource*'
+                Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool*'
+              - Effect: Allow
+                Action:
+                  - 'events:*Targets'
+                  - 'events:*Rule'
+                  - 'events:*Resource'
+                Resource: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+  AppInfra2GroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-AppInfra2-CF-Role'
+        Description: 'CF execution role which will be assume to create app infra' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-AppInfra2-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'AppInfra2-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - 'kms:DescribeKey'
+                  - 'kms:CreateGrant'
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+              - Effect: Allow
+                Action:
+                  - 'dms:ListTagsForResource'
+                  - 'dms:AddTagsToResource'
+                  - 'dms:DeleteReplicationSubnetGroup'
+                  - 'dms:*ReplicationInstance'
+                  - 'dms:*ReplicationTask'
+                  - 'dms:*Endpoint'
+                Resource: 
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:cert:*'
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:task*'
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:rep*'
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:endpoint:${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:subgrp*'
+                - !Sub 'arn:aws:dms:${AWS::Region}:${AWS::AccountId}:endpoint:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'dms:CreateReplicationSubnetGroup'
+                  - 'dms:DescribeAccountAttributes'
+                  - 'dms:DescribeReplicationInstances'
+                  - 'dms:DescribeEndpoints'
+                  - 'dms:DescribeReplicationTasks'
+                  - 'dms:CreateReplicationInstance'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateTags'
+                  - 'ec2:DeleteSecurityGroup'
+                  - 'ec2:RevokeSecurityGroup*'
+                  - 'ec2:AuthorizeSecurityGroup*'
+                  - 'ec2:*VpcEndpoint*'
+                  - 'ec2:Get*'
+                  - 'ec2:*FlowLogs'
+                  - 'ec2:CreateSecurityGroup'
+                  - 'ec2:*Address'
+                Resource: !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'ec2:Describe*'
+                  - 'ec2:CreateSecurityGroup'
+                Resource: "*"
+              - Effect: Allow
+                Action: 
+                - 'iam:PassRole'
+                - 'iam:CreateRole'
+                - 'iam:DeleteRole'
+                - 'iam:UpdateRole'
+                - 'iam:GetRole'
+                - 'iam:TagRole'
+                - 'iam:UntagRole'
+                - 'iam:ListRoleTags'
+                - 'iam:UpdateAssumeRolePolicy'
+                - 'iam:UpdateRoleDescription'
+                - 'iam:AttachRolePolicy'
+                - 'iam:PutRolePolicy'
+                - 'iam:DetachRolePolicy'
+                - 'iam:CreateServiceLinkedRole'
+                - 'iam:DeleteServiceLinkedRole'
+                - 'iam:DeleteRolePolicy'
+                - 'iam:getRolePolicy'
+                Resource: 
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                  - 'secretsmanager:DescribeSecret'
+                Resource:
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-Psql-*'
+              - Effect: Allow
+                Action: 
+                  - 'logs:DeleteLogGroup'
+                  - 'logs:PutRetentionPolicy'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:TagResource'
+                  - 'logs:UntagResource'
+                  - 'logs:DescribeMetricFilters'
+                Resource:
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'  
+              - Effect: Allow
+                Action:
+                - 'ssm:GetParameter'
+                - 'ssm:GetParameters'
+                Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                - 'ecr:DeleteRepository'
+                - 'ecr:*Resource'
+                - 'ecr:*LifecyclePolicy'
+                - 'ecr:Put*'
+                - 'ecr:List*'
+                - 'ecr:*Images'
+                - 'ecr:DescribeRepositories'
+                - 'ecr:*RepositoryPolicy'
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+              - Effect: Allow
+                Action: servicediscovery:GetService
+                Resource: !Sub 'arn:aws:servicediscovery:${AWS::Region}:${AWS::AccountId}:service/*'
+              - Effect: Allow
+                Action:
+                - ecs:*Cluster
+                - ecs:DeregisterTaskDefinition
+                - ecs:List*
+                - ecs:RegisterTaskDefinition
+                - ecs:DescribeTaskDefinition
+                - ecs:CreateCapacityProvider
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - ecs:*Resource
+                - ecs:*TaskSet
+                - ecs:UpdateTaskProtection
+                - ecs:UpdateContainerAgent
+                - ecs:PutAttributes
+                - ecs:UpdateContainerInstancesState
+                - ecs:*Service
+                - ecs:DescribeCapacityProviders
+                - ecs:DeleteTaskDefinitions
+                - ecs:UpdateClusterSettings
+                - ecs:DescribeClusters
+                - ecs:DeleteAttributes
+                - ecs:*CapacityProvider
+                - ecs:DescribeServices
+                - ecs:DescribeContainerInstances
+                Resource: 
+                - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/*'
+                - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-set/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:capacity-provider/*'  
+              - Effect: Allow
+                Action:
+                - 'sns:ListTopics'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - 'config:DescribeConfigurationRecorders'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - 'transfer:*Security*'
+                - 'transfer:*Server*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - 'resource-explorer-2:ListIndexes'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - 'billing:GetBillingNotifications'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - 'transfer:List*'
+                - 'transfer:*Server'
+                - 'transfer:*Resource'
+                - 'transfer:*User'
+                - 'transfer:*SshPublicKey'
+                Resource:
+                - !Sub 'arn:aws:transfer:${AWS::Region}:${AWS::AccountId}:server/*'
+                - !Sub 'arn:aws:transfer:${AWS::Region}:${AWS::AccountId}:user/*'
+              - Effect: Allow
+                Action:
+                  - 's3:*Bucket*'
+                  - 's3:*Configuration'
+                  - 's3:GetObjectVersion'
+                Resource: !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: 
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:*Alias'
+                  - 'lambda:*Function*'
+                  - 'lambda:RemovePermission'
+                  - 'lambda:AddPermission'
+                  - 'lambda:PublishVersion'
+                  - 'lambda:GetRuntimeManagementConfig'
+                  - 'lambda:PublishLayerVersion'
+                  - 'lambda:TagResource'
+                  - 'lambda:UntagResource'
+                  - 'lambda:ListTags'
+                  - 'lambda:Get*'
+                Resource: 
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:event-source-mapping:*'
+              - Effect: Allow
+                Action:
+                  - 'apigateway:POST'
+                  - 'apigateway:DELETE'
+                  - 'apigateway:PUT'
+                  - 'apigateway:GET'
+                  - 'apigateway:PATCH'
+                  - 'apigateway:SetWebACL'
+                  - 'apigateway:UpdateRestApiPolicy'
+                Resource: 
+                  - !Sub 'arn:aws:apigateway:${AWS::Region}::*'
+  DataBaseGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-DataBase-CF-Role'
+        Description: 'CF execution role which will be assume to create database' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-DataBase-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'DataBase-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'rds:DescribeRecommendationGroups'
+                - 'rds:DescribeCertificates'
+                - 'rds:DescribeEvents'
+                - 'rds:DescribeAccountAttributes'
+                - 'rds:DescribeExportTasks'
+                - 'rds:DescribeEngineDefaultParameters'
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - 'rds:CreateEventSubscription'
+                - 'rds:StartDBCluster'
+                - 'rds:DescribeDBSubnetGroups'
+                - 'rds:DescribeGlobalClusters'
+                - 'rds:ResetDBParameterGroup'
+                - 'rds:DescribePendingMaintenanceActions'
+                - 'rds:DescribeDBParameterGroups'
+                - 'rds:CreateDBSubnetGroup'
+                - 'rds:DescribeDBProxyTargets'
+                - 'rds:ModifyDBParameterGroup'
+                - 'rds:DeleteEventSubscription'
+                - 'rds:CreateDBInstance'
+                - 'rds:ModifyDBInstance'
+                - 'rds:DescribeDBParameters'
+                - 'rds:DeleteDBCluster'
+                - 'rds:AddTagsToResource'
+                - 'rds:StopDBCluster'
+                - 'rds:CreateDBParameterGroup'
+                - 'rds:DescribeEventSubscriptions'
+                - 'rds:DescribeDBSnapshots'
+                - 'rds:ModifyEventSubscription'
+                - 'rds:DeleteDBSnapshot'
+                - 'rds:DescribeDBSnapshotAttributes'
+                - 'rds:DeleteDBSubnetGroup'
+                - 'rds:ListTagsForResource'
+                - 'rds:CreateDBSnapshot'
+                - 'rds:DescribeDBClusterSnapshots'
+                - 'rds:ModifyDBCluster'
+                - 'rds:DeleteDBParameterGroup'
+                - 'rds:CreateDBInstanceReadReplica'
+                - 'rds:RemoveTagsFromResource'
+                - 'rds:DescribeDBClusters'
+                - 'rds:DescribeDBClusterParameterGroups'
+                - 'rds:ModifyDBClusterParameterGroup'
+                - 'rds:ModifyDBSubnetGroup'
+                - 'rds:DeleteDBInstance'
+                - 'rds:DescribeDBInstances'
+                - 'rds:AuthorizeDBSecurityGroupIngress'
+                - 'rds:CreateDBCluster'
+                - 'rds:CreateDBInstance'
+                - 'rds:DescribeDBInstances'
+                - 'rds:DescribeDBClusters'
+                - 'rds:CreateDBClusterParameterGroup'
+                - 'rds:DeleteDBClusterParameterGroup'
+                - 'rds:DeleteDBSubnetGroup'              
+              Resource:
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:pg:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster-snapshot:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster-pg:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:subgrp:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:es:*'
+                - !Sub 'arn:aws:rds::${AWS::AccountId}:global-cluster:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:snapshot:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db-proxy-endpoint:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db-proxy:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:secgrp:*'
+                - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:*'
+            - Effect: Allow
+              Action:
+                - 'events:ListRules'
+                - 'events:ListRuleNamesByTarget'
+                - 'events:ListEventBuses'
+                - 'events:TestEventPattern'
+                - 'events:ListConnections'
+                - 'events:ListEndpoints'
+                - 'events:ListApiDestinations'
+                - 'events:ListArchives'
+                - 'events:ListEventSources'
+                - 'events:ListReplays'
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - 'events:ListTargetsByRule'
+                - 'events:DescribeRule'
+                - 'events:PutTargets'
+                - 'events:PutRule'
+                - 'events:EnableRule'
+                - 'events:DisableRule'
+                - 'events:DeleteEventBus'
+                - 'events:ListTagsForResource'
+                - 'events:RemoveTargets'
+                - 'events:DeleteRule'
+                - 'events:DescribeEventBus'
+              Resource: 
+                - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${ResourceNamePrefix}-${EnvironmentType}-*'
+            - Effect: Allow
+              Action: 
+                - 'iam:PassRole'
+                - 'iam:CreateRole'
+                - 'iam:DeleteRole'
+                - 'iam:UpdateRole'
+                - 'iam:GetRole'
+                - 'iam:TagRole'
+                - 'iam:UntagRole'
+                - 'iam:ListRoleTags'
+                - 'iam:UpdateAssumeRolePolicy'
+                - 'iam:UpdateRoleDescription'
+                - 'iam:AttachRolePolicy'
+                - 'iam:PutRolePolicy'
+                - 'iam:DetachRolePolicy'
+                - 'iam:CreateServiceLinkedRole'
+                - 'iam:DeleteServiceLinkedRole'
+                - 'iam:DeleteRolePolicy'
+                - 'iam:getRolePolicy'
+              Resource: 
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*'
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: 
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetRandomPassword'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - secretsmanager:CreateSecret
+                - secretsmanager:TagResource
+                - secretsmanager:UpdateSecret
+                - secretsmanager:UntagResource
+                - secretsmanager:PutSecretValue
+                - secretsmanager:GetResourcePolicy
+                - secretsmanager:DescribeSecret
+                - secretsmanager:ListSecretVersionIds
+                - secretsmanager:GetSecretValue
+              Resource: 
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - 
+              Effect: Allow
+              Action:
+                - secretsmanager:GetRandomPassword
+              Resource: '*'
+            - 
+              Effect: Allow
+              Action:
+                - secretsmanager:DeleteSecret
+              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-*'           
+            - Effect: Allow
+              Action:
+                - 'ec2:CreateSecurityGroup'
+                - 'ec2:CreateTags'
+                - 'ec2:DeleteTags'
+                - 'ec2:ModifySecurityGroupRules'
+                - 'ec2:DeleteSecurityGroup'
+                - 'ec2:*NetworkInterface*'
+                - 'ec2:RevokeSecurityGroup*'
+                - 'ec2:UpdateSecurityGroupRuleDescriptions*'
+                - 'ec2:AuthorizeSecurityGroup*'
+              Resource: 
+                - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*'
+                - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group-rule/*'
+                - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
+                - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/*'
+            - Effect: Allow
+              Action: 
+                - 'ec2:DescribeAvailabilityZones'
+                - 'ec2:DescribeVpcs'
+                - 'ec2:DescribeSubnets'
+                - 'ec2:DescribeSecurityGroups'
+              Resource: "*"
+            - Effect: Allow
+              Action: 'sns:SetSubscriptionAttributes'
+              Resource: "*"
+            - Effect: Allow
+              Action: 
+                - 'sns:Subscribe'
+                - 'sns:SetTopicAttributes' 
+                - 'sns:CreateTopic'
+                - 'sns:DeleteTopic'
+                - 'sns:TagResource'
+                - 'sns:UntagResource'
+                - 'sns:GetTopicAttributes'
+                - 'sns:ListSubscriptionsByTopic'
+                - 'sns:Unsubscribe'
+              Resource:
+                - !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - Effect: Allow
+              Action: 'redshift:Describe*'
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - 'redshift:ModifyClusterIamRoles'
+                - 'redshift:ModifyClusterSnapshotSchedule'
+                - 'redshift:*Cluster'
+                - 'redshift:*ClusterParameterGroup'
+                - 'redshift:*ClusterSnapshot'
+                - 'redshift:*ClusterSecurityGroup'
+                - 'redshift:*ClusterSubnetGroup'
+                - 'redshift:*Tags'
+                - 'redshift:*Logging'
+              Resource: 
+                - !Sub 'arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                - !Sub 'arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:parametergroup:*'
+                - !Sub 'arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:subnetgroup:*'
+            - Effect: Allow
+              Action:
+              - 'es:*Domain*'
+              - 'es:*Package'
+              - 'es:*Tags'
+              - 'es:GetUpgradeHistory'
+              - 'es:GetCompatibleVersions'
+              - 'es:CreateOutboundConnection'
+              - 'es:ESCrossClusterGet'
+              - 'es:UpdateScheduledAction'
+              - 'es:GetCompatibleElasticsearchVersions'
+              Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}*'
+            - Effect: Allow
+              Action:
+              - 'es:*ServiceRole'
+              - 'es:*Connection'
+              - 'es:*VpcEndpoint'
+              - 'es:*Package*'
+              - 'es:ListVersions'
+              - 'es:*InstanceTypeLimits'
+              - 'es:ListDomainNames'
+              - 'es:ListElasticsearchInstanceTypes'
+              - 'es:ListElasticsearchVersions'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+              - logs:DescribeLogGroups
+              - logs:DescribeResourcePolicies
+              - logs:*ResourcePolicy
+              - logs:ListTagsLogGroup
+              Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
+            - Effect: Allow
+              Action: 
+              - logs:DescribeLogStreams
+              - logs:DescribeMetricFilters
+              - logs:GetLogEvents
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:DescribeSubscriptionFilters
+              - logs:UntagResource
+              - logs:TagResource
+              Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+            - Effect: Allow
+              Action:
+                - 's3:PutObject'
+                - 's3:GetBucketAcl'
+              Resource: 
+                - !Sub 'arn:aws:s3:::${RedshiftAuditLoggingBucketName}*'
+  SecretsGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Secrets-CF-Role'
+        Description: 'CF execution role which will be assume to create secrets' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Secrets-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Secrets-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                    - 'cloudformation:CreateChangeSet'
+                    Resource:
+                    - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+                  - Effect: Allow
+                    Action:
+                    - secretsmanager:GetRandomPassword
+                    - secretsmanager:ListSecrets
+                    Resource: '*'
+                  - Effect: Allow
+                    Action: 
+                    - secretsmanager:*Resource
+                    - secretsmanager:*SecretValue
+                    - secretsmanager:*Secret
+                    - secretsmanager:GetResourcePolicy
+                    - secretsmanager:ListSecretVersionIds
+                    Resource:
+                      - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-*'
+                      - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:creditReporting/*'
+                  - Effect: Allow
+                    Action:
+                    - rds:DescribeDBInstances
+                    Resource: 
+                    - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ResourceNamePrefixInSmallLetters}-*'
+                  - Effect: Allow
+                    Action: 'redshift:DescribeClusters'
+                    Resource: "*"
+                  - Effect: Allow
+                    Action:
+                      - 'iam:PassRole'
+                      - 'iam:CreateRole'
+                      - 'iam:DeleteRole'
+                      - 'iam:UpdateRole'
+                      - 'iam:GetRole'
+                      - 'iam:TagRole'
+                      - 'iam:UntagRole'
+                      - 'iam:UpdateAssumeRolePolicy'
+                      - 'iam:ListRoleTags'
+                      - 'iam:GetPolicy'
+                      - 'iam:UpdateRoleDescription'
+                      - 'iam:DeletePolicy'
+                      - 'iam:AttachRolePolicy'
+                      - 'iam:PutRolePolicy'
+                      - 'iam:TagPolicy'
+                      - 'iam:CreatePolicy'
+                      - 'iam:DetachRolePolicy'
+                      - 'iam:ListPolicyVersions'
+                      - 'iam:DeleteRolePolicy'
+                      - 'iam:UntagPolicy'
+                      - 'iam:ListPolicyTags'
+                      - 'iam:ListRolePolicies'
+                      - 'iam:GetRolePolicy'
+                      - 'iam:CreateServiceLinkedRole'
+                    Resource: 
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 'lambda:*EventSourceMapping'
+                    Resource: "*"
+                  - Effect: Allow
+                    Action:
+                      - 'lambda:*Alias'
+                      - 'lambda:PutFunctionEventInvokeConfig'
+                      - 'lambda:*Function'
+                      - 'lambda:RemovePermission'
+                      - 'lambda:UpdateFunctionConfiguration'
+                      - 'lambda:AddPermission'
+                      - 'lambda:UpdateFunctionCode'
+                      - 'lambda:*Version'
+                      - 'lambda:ListVersionsByFunction'
+                      - 'lambda:GetRuntimeManagementConfig'
+                      - 'lambda:GetFunctionCodeSigningConfig'
+                      - 'lambda:*Resource'
+                      - 'lambda:ListTags'
+                      - 'lambda:PutFunctionConcurrency'
+                    Resource: 
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:event-source-mapping:*'
+                  - Effect: Allow
+                    Action: 's3:GetObject'
+                    Resource:
+                       - 'arn:aws:s3:::cf-templates*'
+                       - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-stkdeploy*'            
+  MonitoringGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Monitoring-CF-Role'
+        Description: 'CF execution role which will be assume to create monitoring resources' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Monitoring-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Monitoring-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Pipeline-Policy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 'codepipeline:ListPipelines'
+                    Resource: '*'
+                  - 
+                    Effect: Allow
+                    Action:
+                        - 'iam:PassRole'
+                    Resource: 
+                    - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Sid: 'SQS'
+                    Effect: Allow
+                    Action: 'sqs:*'
+                    Resource: 
+                    - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                    - 'lambda:CreateEventSourceMapping'
+                    - 'lambda:GetEventSourceMapping'
+                    - 'lambda:DeleteEventSourceMapping'
+                    - 'lambda:UpdateEventSourceMapping'
+                    - 'lambda:GetLayerVersion'
+                    Resource: '*'
+                  - Sid: 'Lambda'
+                    Effect: Allow
+                    Action:
+                      - 'lambda:*Alias'
+                      - 'lambda:*Function*'
+                      - 'lambda:RemovePermission'
+                      - 'lambda:AddPermission'
+                      - 'lambda:PublishVersion'
+                      - 'lambda:GetRuntimeManagementConfig'
+                      - 'lambda:PublishLayerVersion'
+                      - 'lambda:TagResource'
+                      - 'lambda:UntagResource'
+                      - 'lambda:ListTags'
+                      - 'lambda:Get*'
+                    Resource: 
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:*'
+                      - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:event-source-mapping:*'
+                  - Effect: Allow
+                    Action: 
+                      - sns:SetSubscriptionAttributes
+                    Resource: '*'
+                  - Effect: Allow
+                    Action:
+                      - sns:Subscribe
+                      - sns:*Topic*
+                      - sns:TagResource
+                      - sns:UntagResource
+                      - sns:Unsubscribe
+                    Resource: 
+                    - !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Sid: 'CwEventRead'
+                    Effect: Allow
+                    Action:
+                      - 'events:ListRules'
+                      - 'events:ListRuleNamesByTarget'
+                      - 'events:ListEventBuses'
+                      - 'events:TestEventPattern'
+                      - 'events:ListConnections'
+                      - 'events:ListEndpoints'
+                      - 'events:ListApiDestinations'
+                      - 'events:ListArchives'
+                      - 'events:ListEventSources'
+                      - 'events:ListReplays'
+                    Resource: "*"
+                  - Sid: 'CwEventWrite'
+                    Effect: Allow
+                    Action:
+                      - 'events:ListTargetsByRule'
+                      - 'events:DescribeRule'
+                      - 'events:PutTargets'
+                      - 'events:PutRule'
+                      - 'events:EnableRule'
+                      - 'events:DisableRule'
+                      - 'events:DeleteEventBus'
+                      - 'events:ListTagsForResource'
+                      - 'events:RemoveTargets'
+                      - 'events:DeleteRule'
+                      - 'events:DescribeEventBus'
+                    Resource: 
+                      - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Sid: CloudFormationRead
+                    Effect: Allow
+                    Action:
+                      - 'cloudformation:CreateChangeSet'
+                    Resource:
+                      - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+                  - Effect: Allow
+                    Action:
+                      - 'cloudwatch:ListMetricStreams'
+                      - 'cloudwatch:ListMetrics'
+                    Resource: '*'
+                  - Effect: Allow
+                    Action:
+                      - 'cloudwatch:TagResource'
+                      - 'cloudwatch:*Alarm*'
+                      - 'cloudwatch:UntagResource'
+                    Resource:
+                      - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:insight-rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                      - 'iam:*Role'
+                      - 'iam:ListRoleTags'
+                      - 'iam:*RolePolicy'
+                      - 'iam:UpdateRoleDescription'
+                      - 'iam:*LinkedRole'
+                      - 'iam:*InstanceProfile'
+                    Resource: 
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 's3:GetObject'
+                    Resource: 
+                       - 'arn:aws:s3:::cf-templates*'
+                       - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-stkdeploy*'
+  LoggingStackGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Logging-CF-Role'
+        Description: 'CF execution role which will be assume to create logging' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Logging-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Logging-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 'codepipeline:ListPipelines'
+                    Resource: '*'
+  BackupStackGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Backup-CF-Role'
+        Description: 'CF execution role which will be assume to create backup' 
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Backup-CF-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Backup-CF-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 'codepipeline:ListPipelines'
+                    Resource: '*'
+                  - Effect: Allow
+                    Action: 
+                      - sns:GetTopicAttributes
+                      - sns:CreateTopic
+                      - sns:SetTopicAttributes
+                      - sns:Subscribe
+                      - sns:Unsubscribe
+                      - sns:TagResource
+                      - sns:UntagResource
+                      - sns:DeleteTopic
+                      - SNS:ListSubscriptionsByTopic
+                    Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                      - events:DeleteRule
+                      - events:PutTargets
+                      - events:DescribeRule
+                      - events:PutRule
+                      - events:RemoveTargets
+                    Resource: 
+                      - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                      - ec2:DescribeVpcs
+                      - ec2:DescribeSubnets
+                    Resource: "*" 
+                  - Effect: Allow
+                    Action: 
+                      - ec2:*VpcEndpoint*
+                    Resource:
+                    - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*' 
+                  - Effect: Allow
+                    Action: 
+                      - ecr:PutLifecyclePolicy
+                      - ecr:DescribeRepositories
+                      - ecr:ListTagsForResource
+                      - ecr:DeleteRepository
+                      - ecr:GetRepositoryPolicy
+                      - ecr:GetLifecyclePolicy
+                      - ecr:TagResource
+                      - ecr:PutImageTagMutability
+                      - ecr:PutImageScanningConfiguration
+                      - ecr:UntagResource
+                    Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                  - Effect: Allow
+                    Action:
+                      - 'ecr:CreateRepository'
+                    Resource: "*"
+                  - Effect: Allow
+                    Action: 
+                      - ecs:DeregisterTaskDefinition
+                      - ecs:RegisterTaskDefinition
+                      - ecs:DescribeTaskDefinition
+                    Resource: '*'
+                  - Effect: Allow
+                    Action: 
+                      - iam:GetRole
+                      - iam:DeleteRolePolicy
+                      - iam:CreateRole
+                      - iam:DeleteRole
+                      - iam:PutRolePolicy
+                      - iam:GetRolePolicy
+                      - iam:PassRole
+                    Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action:
+                    - 's3:PutBucket*'
+                    - 's3:*Bucket'
+                    - 's3:*Configuration'
+                    - 's3:GetObjectVersion'
+                    - 's3:*BucketPolicy'
+                    Resource: 
+                    - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                  - Effect: Allow
+                    Action: ssm:GetParameters
+                    Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                      - states:*StateMachine
+                      - states:*Resource
+                    Resource: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 
+                      - logs:*LogGroup
+                      - logs:CreateLogStream
+                      - logs:PutLogEvents
+                      - logs:*Resource
+                      - logs:PutRetentionPolicy
+                    Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - Effect: Allow
+                    Action: 'logs:DescribeLogGroups'
+                    Resource: "*"  
+                  - Effect: Allow
+                    Action:
+                      - 'dlm:CreateLifecyclePolicy'
+                    Resource: '*'
+                  - Effect: Allow
+                    Action:
+                      - 'dlm:UntagResource'
+                      - 'dlm:UpdateLifecyclePolicy'
+                      - 'dlm:DeleteLifecyclePolicy'
+                      - 'dlm:TagResource'
+                      - 'dlm:GetLifecyclePolicy'
+                    Resource: 
+                    - !Sub 'arn:aws:dlm:${AWS::Region}:${AWS::AccountId}:*'
+                  - Effect: Allow
+                    Action:
+                      - 'iam:PassRole'
+                      - 'iam:CreateRole'
+                      - 'iam:DeleteRole'
+                      - 'iam:UpdateRole'
+                      - 'iam:GetRole'
+                      - 'iam:TagRole'
+                      - 'iam:UntagRole'
+                      - 'iam:UpdateAssumeRolePolicy'
+                      - 'iam:ListRoleTags'
+                      - 'iam:GetPolicy'
+                      - 'iam:UpdateRoleDescription'
+                      - 'iam:DeletePolicy'
+                      - 'iam:AttachRolePolicy'
+                      - 'iam:PutRolePolicy'
+                      - 'iam:TagPolicy'
+                      - 'iam:CreatePolicy'
+                      - 'iam:DetachRolePolicy'
+                      - 'iam:ListPolicyVersions'
+                      - 'iam:DeleteRolePolicy'
+                      - 'iam:UntagPolicy'
+                      - 'iam:ListPolicyTags'
+                      - 'iam:ListRolePolicies'
+                      - 'iam:GetRolePolicy'
+                      - 'iam:CreateServiceLinkedRole'
+                    Resource: 
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*'
+                  - Effect: Allow
+                    Action:
+                      - 'backup:DisassociateRecoveryPoint'
+                      - 'backup:Put*'
+                      - 'backup:Delete*'
+                      - 'backup:Update*'
+                    Resource:
+                      - !Sub 'arn:aws:backup:${AWS::Region}:${AWS::AccountId}:*:${ResourceNamePrefix}-${EnvironmentType}-*'
+                      - !Sub 'arn:aws:backup:${AWS::Region}:${AWS::AccountId}:backup-plan:*'
+                  - Effect: Allow
+                    Action:
+                      - 'backup:List*'
+                      - 'backup:UntagResource'
+                      - 'backup:TagResource'
+                      - 'backup:Describe*'
+                      - 'backup:Get*'
+                      - 'backup:Create*'
+                      - 'backup-storage:*'
+                    Resource: '*'
+  SAMAssumeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-SAM-CF-Role'
+      Description: 'CF Execution Role to be assumed for SAM Template Creation'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-SAM-CF-Role'
+        - Key: ApplicationRole
+          Value: 'SAM-CF-Role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Action: 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service: cloudformation.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-IPlcy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'sns:SetSubscriptionAttributes'
+                Resource: "*"
+              - Effect: Allow
+                Action: 
+                  - 'sns:Subscribe'
+                  - 'sns:SetTopicAttributes' 
+                  - 'sns:CreateTopic'
+                  - 'sns:DeleteTopic'
+                  - 'sns:TagResource'
+                  - 'sns:UntagResource'
+                  - 'sns:GetTopicAttributes'
+                  - 'sns:ListSubscriptionsByTopic'
+                  - 'sns:Unsubscribe'
+                  - 'sns:GetDataProtectionPolicy'
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'glue:*Job'
+                  - 'glue:*Trigger'
+                  - 'glue:*Connection'
+                  - 'glue:*Connections'
+                  - 'glue:*Resource'
+                Resource: 
+                  - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:trigger/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:connection/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 'sqs:*'
+                Resource: 
+                - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:*-${EnvironmentType}'
+                - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${EnvironmentType}*'
+              - Effect: Allow
+                Action: 
+                - 'lambda:CreateEventSourceMapping'
+                - 'lambda:GetEventSourceMapping'
+                - 'lambda:DeleteEventSourceMapping'
+                - 'lambda:UpdateEventSourceMapping'
+                - 'lambda:GetLayerVersion'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:*Alias'
+                  - 'lambda:*Function*'
+                  - 'lambda:RemovePermission'
+                  - 'lambda:AddPermission'
+                  - 'lambda:PublishVersion'
+                  - 'lambda:GetRuntimeManagementConfig'
+                  - 'lambda:PublishLayerVersion'
+                  - 'lambda:TagResource'
+                  - 'lambda:UntagResource'
+                  - 'lambda:ListTags'
+                  - 'lambda:Get*'
+                Resource: 
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:event-source-mapping:*'
+              - Effect: Allow
+                Action: 's3:GetObject'
+                Resource: !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-pipeline-artifacts/*'
+              - Effect: Allow
+                Action:
+                  - 's3:PutBucketNotification'
+                  - 's3:PutBucketTagging'
+                  - 's3:PutBucketVersioning'
+                  - 's3:*BucketPolicy'
+                  - 's3:*Bucket'
+                  - 's3:PutBucketLogging'
+                  - 's3:*Configuration'
+                  - 's3:PutBucketCORS'
+                  - 's3:PutBucketPublicAccessBlock'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-dbauto*'
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*/*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                  - 'iam:CreateRole'
+                  - 'iam:DeleteRole'
+                  - 'iam:UpdateRole'
+                  - 'iam:GetRole'
+                  - 'iam:TagRole'
+                  - 'iam:UntagRole'
+                  - 'iam:UpdateAssumeRolePolicy'
+                  - 'iam:ListRoleTags'
+                  - 'iam:GetPolicy'
+                  - 'iam:UpdateRoleDescription'
+                  - 'iam:DeletePolicy'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:TagPolicy'
+                  - 'iam:CreatePolicy'
+                  - 'iam:DetachRolePolicy'
+                  - 'iam:ListPolicyVersions'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:UntagPolicy'
+                  - 'iam:ListPolicyTags'
+                  - 'iam:ListRolePolicies'
+                  - 'iam:GetRolePolicy'
+                  - 'iam:CreateServiceLinkedRole'
+                Resource: 
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*'
+              - Effect: Allow
+                Action:
+                  - 'apigateway:POST'
+                  - 'apigateway:DELETE'
+                  - 'apigateway:PUT'
+                  - 'apigateway:GET'
+                  - 'apigateway:PATCH'
+                  - 'apigateway:SetWebACL'
+                  - 'apigateway:UpdateRestApiPolicy'
+                Resource: 
+                  - !Sub 'arn:aws:apigateway:${AWS::Region}::*'
+              - Effect: Allow
+                Action:
+                - wafv2:AssociateWebACL
+                - wafv2:DisassociateWebACL
+                - wafv2:GetWebACL*
+                Resource:
+                - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'ssm:GetParameters'
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:CreateChangeSet'
+                  - 'cloudformation:ExecuteChangeSet'
+                  - 'cloudformation:DeleteChangeSet'
+                  - 'cloudformation:DescribeChangeSet'
+                  - 'cloudformation:SetStackPolicy'
+                  - 'cloudformation:ValidateTemplate'
+                Resource: 
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ResourceNamePrefix}-${EnvironmentType}-*-MS*'
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+              - Effect: Allow
+                Action:
+                - 'events:ListRules'
+                - 'events:ListRuleNamesByTarget'
+                - 'events:ListEventBuses'
+                - 'events:TestEventPattern'
+                - 'events:ListConnections'
+                - 'events:ListEndpoints'
+                - 'events:ListApiDestinations'
+                - 'events:ListArchives'
+                - 'events:ListEventSources'
+                - 'events:ListReplays'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                - 'events:ListTargetsByRule'
+                - 'events:DescribeRule'
+                - 'events:PutTargets'
+                - 'events:PutRule'
+                - 'events:EnableRule'
+                - 'events:DisableRule'
+                - 'events:DeleteEventBus'
+                - 'events:ListTagsForResource'
+                - 'events:RemoveTargets'
+                - 'events:DeleteRule'
+                - 'events:DescribeEventBus'
+                Resource: 
+                - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 
+                - 'appsync:GetApiAssociation'
+                - 'appsync:GetGraphqlApi'
+                - 'appsync:AssociateApi'
+                - 'appsync:ListTagsForResource'
+                - 'appsync:UpdateGraphqlApi'
+                - 'appsync:DeleteGraphqlApi'
+                - 'appsync:DeleteDomainName'
+                - 'appsync:UntagResource'
+                - 'appsync:TagResource'
+                - 'appsync:DisassociateApi'
+                - 'appsync:GetDomainName'
+                Resource: 
+                - !Sub 'arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:domainnames/*'
+                - !Sub 'arn:aws:appsync:${AWS::Region}:${AWS::AccountId}:apis/*'
+              - Effect: Allow
+                Action: 
+                - 'appsync:CreateDomainName'
+                - 'appsync:CreateGraphqlApi'
+                - 'appsync:DeleteResolver'
+                - 'appsync:UpdateResolver'
+                - 'appsync:ListResolversByFunction'
+                - 'appsync:ListDataSources'
+                - 'appsync:GetDataSource'
+                - 'appsync:CreateDataSource'
+                - 'appsync:UpdateDataSource'
+                - 'appsync:DeleteDataSource'
+                - 'appsync:CreateResolver'
+                - 'appsync:GetResolver'
+                - 'appsync:ListResolvers'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                - 'dynamodb:*Table*'
+                - 'dynamodb:TagResource'
+                - 'dynamodb:UntagResource'
+                - 'dynamodb:*ContinuousBackups'
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                - 'cognito-idp:TagResource'
+                - 'cognito-idp:UntagResource'
+                - 'cognito-idp:ListTagsForResource'
+                - 'cognito-idp:*UserPool*'
+                - 'cognito-idp:*ResourceServer'
+                Resource:
+                  - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool*'
+                  - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:*webacl*'
+              - Effect: Allow
+                Action:
+                - 'cognito-idp:DescribeUserPoolDomain'
+                - 'cognito-idp:CreateUserPool'
+                - 'cognito-idp:ListUserPools'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                - 'kinesis:DescribeStreamSummary'
+                - 'kinesis:CreateStream'
+                - 'kinesis:DeleteStream'
+                - 'kinesis:StartStreamEncryption'
+                - 'kinesis:AddTagsToStream'
+                Resource:
+                - !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                - 'cloudwatch:*Dashboard'
+                - 'cloudwatch:DeleteDashboards'
+                - 'cloudwatch:Describe*'
+                - 'cloudwatch:StartMetricStreams'
+                - 'cloudwatch:DeleteMetricStream'
+                - 'cloudwatch:*Resource'
+                - 'cloudwatch:PutMetricAlarm'
+                - 'cloudwatch:EnableAlarmActions'
+                - 'cloudwatch:*Alarm*'
+                Resource:        
+                - !Sub 'arn:aws:cloudwatch::${AWS::AccountId}:dashboard/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:metric-stream/*'
+                - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:insight-rule/${ResourceNamePrefix}-${EnvironmentType}-*'
+                - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${ResourceNamePrefix}-${EnvironmentType}-*'            
+              - Effect: Allow
+                Action: 'elasticfilesystem:DescribeMountTargets'
+                Resource: 
+                  - !Sub 'arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:access-point/*'
+                  - !Sub 'arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/*'
+              - Effect: Allow
+                Action: 
+                  - 'ecr:GetRepositoryPolicy'
+                  - 'ecr:SetRepositoryPolicy'
+                Resource:
+                  - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+              - Effect: Allow
+                Action: 
+                  - 'states:UpdateStateMachine'
+                  - 'states:UntagResource'
+                  - 'states:TagResource'
+                  - 'states:DescribeStateMachine'
+                  - 'states:DeleteStateMachine'
+                  - 'states:CreateStateMachine'
+                Resource:
+                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                - 'logs:*LogGroup'
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+                - 'logs:*Resource'
+                - 'logs:PutRetentionPolicy'
+                Resource: 
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action: 'logs:DescribeLogGroups'
+                Resource: "*"
+
+Outputs:
+  SamCfAssumeRoleName:
+    Description: Assume Role to create SAM template.
+    Value: !Ref SAMAssumeRole

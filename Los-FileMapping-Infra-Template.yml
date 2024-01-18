@@ -1,0 +1,2038 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create ElasticFileSystem, EFSAccessPoint, ECSService, LifeCycleHook, ECSTaskDefinition, ECSServiceRole, InstanceRole, LaunchTemplate, AutoScalingGroup for Inference and Retrain.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Naming Conventions
+      Parameters:
+        - ResourceNamePrefix
+        - EnvironmentType
+        - ServiceName
+    - Label:
+        default: Inference Parameters
+      Parameters:
+        - InferenceVolumeConfig
+        - InferenceEcrRepoName
+        - InferenceAsgCapacity
+        - InferenceInstanceType
+        - InferenceCustomTags
+        - RetrainCustomTags
+        - LifeCycleHookHeartBeatTimeOut
+        - FilemappingSgIngressRules
+        - FilemappingSgEgressRules
+        - InferenceEcsVariables
+        - UvicornWorkerCount
+        - SqsVisibilityTimeout
+        - InferenceLogBucketName
+        - FileManagerUploadsBucketName
+        - CodatBucketName
+        - InferenceImageTagStoreName
+        - FilemappingSgCreationRequired
+        
+    - Label:
+        default: Retrain Parameters
+      Parameters:
+        - RetrainInstanceType
+        - RetrainVolumeConfig
+        - EcsRetrainEcrRepoName
+        - LambdaRetrainEcrRepoName
+        - RetrainEcsVariables
+        - RetrainAsgCapacity
+        - RetrainImageTagStoreName
+    - Label:
+        default: Common Parameters
+      Parameters:
+        - ClusterName
+        - MemoryReservation
+        - VpcId
+        - VpcCidrIp
+        - AppSubnetIds
+        - NumberofGPU
+        - EnableDetailedMonitoring
+        - ServiceBaseAmiStoreName
+        - EcrImageCountDeleteAfter
+        - S3AccessLogBucketName
+        - ManagedPolicy
+        - AdditionalSgIds
+    - Label:
+        default: Inference Scaling Parameters
+      Parameters:
+        - InferenceStepScaleInValues
+        - InferenceStepScaleOutValues
+        - InferenceScaleInAlarmValues
+        - InferenceScaleOutAlarmValues
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Prefix for Resource Names.
+    Default: Los
+  EnvironmentType:
+    Type: String
+    Description: Name your EnvironmentType according to need.
+  ServiceName:
+    Type: String
+    Description: Specify the name of the service.
+  MemoryReservation:
+    Type: Number
+    Description: Soft limit of memory for the container.
+    Default: 256
+  ClusterName:
+    Type: String
+    Description: Please enter the name of the cluster in which the service has to be created.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Enter the VPC ID. Needed for target group creation.
+  VpcCidrIp:
+    Type: String
+    Description: Enter the VPC CIDR IP to allow the access.
+  AppSubnetIds:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Select at least two private subnets in your selected VPC for your containers.
+  InferenceVolumeConfig:
+    Type: CommaDelimitedList
+    Description: 'Specify the inference instance volume configuration in following format: "VolumeSize,VolumeType,Iops,Throughput"'
+    Default: '50,gp3,16000,1000'
+  RetrainVolumeConfig:
+    Type: CommaDelimitedList
+    Description: 'Specify the Retrain instance volume configuration in following format: "VolumeSize,VolumeType,Iops,Throughput"'
+    Default: '50,gp3,16000,1000'
+  InferenceAsgCapacity:
+    Type: CommaDelimitedList
+    Description: 'Specify the inference auto scaling group capacity in following format: "DesiredCapacity", "MinSize", "MaxSize".'
+    Default: 1,1,3
+  RetrainAsgCapacity:
+    Type: CommaDelimitedList
+    Description: 'Specify the retrain auto scaling group capacity in following format: "DesiredCapacity", "MinSize", "MaxSize".'
+    Default: 0,0,0    
+  EnableDetailedMonitoring:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Description: Specify true to enable Detailed Monitoring & false for disabling monitoring.
+  InferenceInstanceType:
+    Type: String
+    Description: Choose the instance type to use for the AutoScale group.
+  RetrainInstanceType:
+    Type: String
+    Description: Choose the instance type to use for the AutoScaling group.
+  UvicornWorkerCount:
+    Type: Number
+    Description: Specify the number of uvicorn workers based on the inference instance capacity.
+    Default: 4
+  SqsVisibilityTimeout:
+    Type: Number
+    MaxValue: 43200
+    MinValue: 0
+    Description: The length of time during which a message will be unavailable after a message is delivered from the queue. Values must be from 0 to 43,200 seconds.
+    Default: 900
+  InferenceEcsVariables:
+    Type: CommaDelimitedList
+    Description: 'Specify the inference ECS services environment variables in following format: "Key1:Value1,Key2:Value2,.,.,."'
+    Default: 'LogsBucketName:123,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None'
+  RetrainEcsVariables:
+    Type: CommaDelimitedList
+    Description: 'Specify the retrain ECS services environment variables in following format: "Key1:Value1,Key2:Value2,.,.,."'
+    Default: 'LogsBucketName:123,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None,None'
+  InferenceCustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to all instances or volumes that are created during launch.'
+    Default: None,None,None,None,None
+  RetrainCustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to all instances or volumes that are created during launch.'
+    Default: None,None,None,None,None    
+  LifeCycleHookHeartBeatTimeOut:
+    Type: String
+    Default: 3600
+    Description: Enter the Value for ASG Heart Beat Time Out Seconds.
+  InferenceEcrRepoName:
+    Type: String
+    Description: Enter the ECR Repo name for Inference Task Definition creation & IAM permission restrictions.
+  EcsRetrainEcrRepoName: 
+    Type: String
+    Description: Enter the ECR Repo name for Retrain Task Definition creation & IAM permission restrictions.
+  LambdaRetrainEcrRepoName:
+    Description: Enter name of the ECR repository for retraining.
+    Type: String
+  NumberofGPU:
+    Type: Number
+    Description: Specify the number of physical GPU's Amazon ECS Container agent will resolve for the container.
+  FilemappingSgIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  FilemappingSgEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11). The values are used to create the security group rules dynamically. To create AllTraffic to anywhere use the parameter default value.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  EcrImageCountDeleteAfter:
+    Type: Number
+    MinValue: '2'
+    MaxValue: '50'
+    Description: 'Maximum Ecr image to keep in the repo. Min:2 Max:50'
+    Default: 5
+  S3AccessLogBucketName:
+    Type: String
+    Description: Enter the S3 AccessLog Bucket Name.
+  InferenceLogBucketName:
+    Type: String
+    Description: 'Specify the inference log bucket name.'
+  FileManagerUploadsBucketName:
+    Type: String
+    Description: 'Specify the name of the filemanager uploads bucket name.'
+  CodatBucketName:
+    Type: String
+    Description: Specify the codat service uploads bucket name.    
+  InferenceScaleInAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: ComparisonOperator,EvaluationPeriods,MetricName,Namespace,Period,Statistic,Threshold'
+    Default: 'LessThanOrEqualToThreshold,1,ApproximateNumberOfMessagesVisible,AWS/SQS,60,Maximum,10'
+  InferenceScaleOutAlarmValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the alarm values in following format: ComparisonOperator,EvaluationPeriods,MetricName,Namespace,Period,Statistic,Threshold'
+    Default: 'GreaterThanOrEqualToThreshold,1,ApproximateNumberOfMessagesVisible,AWS/SQS,60,Maximum,20'
+  InferenceStepScaleInValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step scaling policy values in following format: MetricIntervalLowerBound,MetricIntervalUpperBound,ScalingAdjustment'
+    Default: 'N:0:-1,N:N:N,N:N:N,N:N:N,N:N:N'
+  InferenceStepScaleOutValues:
+    Type: CommaDelimitedList
+    Description: 'Specify the step scaling policy values in following format: MetricIntervalLowerBound,MetricIntervalUpperBound,ScalingAdjustment'
+    Default: '0:10:1,10:N:2,N:N:N,N:N:N,N:N:N'
+  ServiceBaseAmiStoreName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter store where FMAP service base image was stored.'
+  InferenceImageTagStoreName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter store where dynamic ECR image tag is stored.'
+  RetrainImageTagStoreName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter store where dynamic ECR image tag is stored.'
+  InstanceRoleManagedPolicy:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter where the ManagedPolicy for instance role is Provided'
+  FilemappingSgCreationRequired:
+    Type: String
+    Description: 'Enter true to create SecurityGroup for entire filemapping setup & false to use existing Security Groups.'
+    AllowedValues: ["true", "false"]  
+  AdditionalSgIds:
+    Type: CommaDelimitedList
+    Description: Enter Existing AdditionalSgIds as per the requirement & Along with this if you want to create new security group  set FilemappingSgCreationRequired to true.
+    Default: "None,None,None,None"
+Conditions:
+  SGValue01: !Equals [!Ref FilemappingSgCreationRequired, true]
+  SGValue02: !Not [!Equals [!Select [0, !Ref AdditionalSgIds], "None"]]
+  SGValue03: !Not [!Equals [!Select [1, !Ref AdditionalSgIds], "None"]]
+  SGValue04: !Not [!Equals [!Select [2, !Ref AdditionalSgIds], "None"]]
+  SGValue05: !Not [!Equals [!Select [3, !Ref AdditionalSgIds], "None"]]
+  S3AccessLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName, '']]
+  InferenceTag0Exist: !Equals [ !Select [0, !Ref InferenceCustomTags], "None"]
+  InferenceTag1Exist: !Equals [ !Select [1, !Ref InferenceCustomTags], "None"]
+  InferenceTag2Exist: !Equals [ !Select [2, !Ref InferenceCustomTags], "None"]
+  InferenceTag3Exist: !Equals [ !Select [3, !Ref InferenceCustomTags], "None"]
+  InferenceTag4Exist: !Equals [ !Select [4, !Ref InferenceCustomTags], "None"]
+  
+  RetrainTag0Exist: !Equals [ !Select [0, !Ref RetrainCustomTags], "None"]
+  RetrainTag1Exist: !Equals [ !Select [1, !Ref RetrainCustomTags], "None"]
+  RetrainTag2Exist: !Equals [ !Select [2, !Ref RetrainCustomTags], "None"]
+  RetrainTag3Exist: !Equals [ !Select [3, !Ref RetrainCustomTags], "None"]
+  RetrainTag4Exist: !Equals [ !Select [4, !Ref RetrainCustomTags], "None"]
+  
+  IsScaleInRules0Exist: !Equals [ !Select [ 0, !Ref InferenceStepScaleInValues ], "N:N:N" ]
+  IsScaleInRules1Exist: !Equals [ !Select [ 1, !Ref InferenceStepScaleInValues ], "N:N:N" ]
+  IsScaleInRules2Exist: !Equals [ !Select [ 2, !Ref InferenceStepScaleInValues ], "N:N:N" ]
+  IsScaleInRules3Exist: !Equals [ !Select [ 3, !Ref InferenceStepScaleInValues ], "N:N:N" ]
+  IsScaleInRules4Exist: !Equals [ !Select [ 4, !Ref InferenceStepScaleInValues ], "N:N:N" ]
+  
+  IsScaleInLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleInValues ]]], 'N']
+  
+  IsScaleInUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleInValues ]]], 'N']
+  IsScaleInUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleInValues ]]], 'N']
+  
+  IsScaleOutRules0Exist: !Equals [ !Select [ 0, !Ref InferenceStepScaleOutValues ], "N:N:N" ]
+  IsScaleOutRules1Exist: !Equals [ !Select [ 1, !Ref InferenceStepScaleOutValues ], "N:N:N" ]
+  IsScaleOutRules2Exist: !Equals [ !Select [ 2, !Ref InferenceStepScaleOutValues ], "N:N:N" ]
+  IsScaleOutRules3Exist: !Equals [ !Select [ 3, !Ref InferenceStepScaleOutValues ], "N:N:N" ]
+  IsScaleOutRules4Exist: !Equals [ !Select [ 4, !Ref InferenceStepScaleOutValues ], "N:N:N" ]
+
+  IsScaleOutLowerBound0Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutLowerBound1Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutLowerBound2Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutLowerBound3Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutLowerBound4Exist: !Equals [ !Select [ 0, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleOutValues ]]], 'N']
+  
+  IsScaleOutUpperBound0Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutUpperBound1Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutUpperBound2Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutUpperBound3Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleOutValues ]]], 'N']
+  IsScaleOutUpperBound4Exist: !Equals [ !Select [ 1, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleOutValues ]]], 'N']
+  
+  InferenceVariable0Exist: !Equals [ !Select [0, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable1Exist: !Equals [ !Select [1, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable2Exist: !Equals [ !Select [2, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable3Exist: !Equals [ !Select [3, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable4Exist: !Equals [ !Select [4, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable5Exist: !Equals [ !Select [5, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable6Exist: !Equals [ !Select [6, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable7Exist: !Equals [ !Select [7, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable8Exist: !Equals [ !Select [8, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable9Exist: !Equals [ !Select [9, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable10Exist: !Equals [ !Select [10, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable11Exist: !Equals [ !Select [11, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable12Exist: !Equals [ !Select [12, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable13Exist: !Equals [ !Select [13, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable14Exist: !Equals [ !Select [14, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable15Exist: !Equals [ !Select [15, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable16Exist: !Equals [ !Select [16, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable17Exist: !Equals [ !Select [17, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable18Exist: !Equals [ !Select [18, !Ref InferenceEcsVariables], "None"]
+  InferenceVariable19Exist: !Equals [ !Select [19, !Ref InferenceEcsVariables], "None"]
+  
+  RetrainVariable0Exist: !Equals [ !Select [0, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable1Exist: !Equals [ !Select [1, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable2Exist: !Equals [ !Select [2, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable3Exist: !Equals [ !Select [3, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable4Exist: !Equals [ !Select [4, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable5Exist: !Equals [ !Select [5, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable6Exist: !Equals [ !Select [6, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable7Exist: !Equals [ !Select [7, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable8Exist: !Equals [ !Select [8, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable9Exist: !Equals [ !Select [9, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable10Exist: !Equals [ !Select [10, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable11Exist: !Equals [ !Select [11, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable12Exist: !Equals [ !Select [12, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable13Exist: !Equals [ !Select [13, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable14Exist: !Equals [ !Select [14, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable15Exist: !Equals [ !Select [15, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable16Exist: !Equals [ !Select [16, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable17Exist: !Equals [ !Select [17, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable18Exist: !Equals [ !Select [18, !Ref RetrainEcsVariables], "None"]
+  RetrainVariable19Exist: !Equals [ !Select [19, !Ref RetrainEcsVariables], "None"]
+  
+  FilemappingIngress0Exist: !Equals [ !Select [ 0, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress1Exist: !Equals [ !Select [ 1, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress2Exist: !Equals [ !Select [ 2, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress3Exist: !Equals [ !Select [ 3, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress4Exist: !Equals [ !Select [ 4, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress5Exist: !Equals [ !Select [ 5, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress6Exist: !Equals [ !Select [ 6, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress7Exist: !Equals [ !Select [ 7, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress8Exist: !Equals [ !Select [ 8, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  FilemappingIngress9Exist: !Equals [ !Select [ 9, !Ref FilemappingSgIngressRules ], "N:N:N:N" ]
+  FilemappingSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ]]], "sg" ]
+  
+  FilemappingEgress0Exist: !Equals [ !Select [ 0, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress1Exist: !Equals [ !Select [ 1, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress2Exist: !Equals [ !Select [ 2, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress3Exist: !Equals [ !Select [ 3, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress4Exist: !Equals [ !Select [ 4, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress5Exist: !Equals [ !Select [ 5, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress6Exist: !Equals [ !Select [ 6, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress7Exist: !Equals [ !Select [ 7, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress8Exist: !Equals [ !Select [ 8, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+  FilemappingEgress9Exist: !Equals [ !Select [ 9, !Ref FilemappingSgEgressRules ], "N:N:N:N" ]
+  FilemappingEgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ]]], "sg" ]
+ 
+Resources:
+  EcsCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecs-CWLg'
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecs-CWLg'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-Ecs-CWLg'
+  FilemappingSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for filemapping.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-SGrp'
+      SecurityGroupIngress:
+      - !If
+        - FilemappingIngress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgIngressRules ] ] ] ]
+      - !If
+        - FilemappingIngress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [FilemappingSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - FilemappingEgress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref FilemappingSgEgressRules ] ] ] ]
+      - !If
+        - FilemappingEgress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [FilemappingEgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [FilemappingEgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref FilemappingSgEgressRules ] ] ] ]
+  FilemappingSgInboundRule1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      Description: 'Inbound traffic to EFS '
+      SourceSecurityGroupId: !GetAtt FilemappingSg.GroupId
+      GroupId: !GetAtt FilemappingSg.GroupId
+  FilemappingSgOutboundRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      Description: 'Outbound traffic from inference, retain and lambda to EFS'
+      DestinationSecurityGroupId: !GetAtt FilemappingSg.GroupId
+      GroupId: !GetAtt FilemappingSg.GroupId      
+  ModelElasticFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      BackupPolicy:
+        Status: ENABLED
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Efs'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Model-Efs'
+      FileSystemPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+                AWS: "*"
+            Action:
+              -  "elasticfilesystem:ClientMount"
+              -  "elasticfilesystem:ClientRootAccess"
+              -  "elasticfilesystem:ClientWrite"
+            Resource: "*"
+          - Effect: "Allow"
+            Principal:
+                AWS: "*"
+            Action: "*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+  ModelEfsMountTargetSubnet0:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref ModelElasticFileSystem
+      SecurityGroups: 
+        - !If [SGValue01, !GetAtt FilemappingSg.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+      SubnetId: !Select [0 , !Ref AppSubnetIds]
+  ModelEfsMountTargetSubnet1:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref ModelElasticFileSystem
+      SecurityGroups: 
+        - !If [SGValue01, !GetAtt FilemappingSg.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+      SubnetId: !Select [1 , !Ref AppSubnetIds]
+  ModelEFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref ModelElasticFileSystem
+      RootDirectory:
+        Path: '/filemapping'
+        CreationInfo:
+          OwnerGid: '0'
+          OwnerUid: '0'
+          Permissions: '0755'
+      PosixUser:
+        Gid: '0'
+        SecondaryGids:
+          - '0'
+        Uid: '0'
+      AccessPointTags:
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-EfsAccessPoint'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-Model-EfsAccessPoint'
+  InferenceLogBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-LgBkt'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-LgBkt'
+      BucketName: !Ref InferenceLogBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      VersioningConfiguration: 
+         Status: Suspended
+      LoggingConfiguration:
+        !If
+        - S3AccessLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${InferenceLogBucketName}/'  
+        - !Ref "AWS::NoValue"
+      LifecycleConfiguration:
+        Rules:
+        - ExpirationInDays: 730
+          NoncurrentVersionExpirationInDays: 730
+          Status: Enabled
+          Id: s3object-Deletion-rule
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: 'TRUE'
+        BlockPublicPolicy: 'TRUE'
+        IgnorePublicAcls: 'TRUE'
+        RestrictPublicBuckets: 'TRUE'
+  InferenceLogBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref InferenceLogBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+            - !Sub 'arn:aws:s3:::${InferenceLogBucket}'
+            - !Sub 'arn:aws:s3:::${InferenceLogBucket}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  InferenceECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ClusterName
+      LaunchType: EC2
+      SchedulingStrategy: DAEMON
+      ServiceName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-EcsSvc'
+      TaskDefinition: !Ref InferenceTaskDefinition
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-EcsSvc'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-EcsSvc'
+  InferenceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ExecutionRoleArn: !GetAtt InferenceEcsServiceRole.Arn
+      Family: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-TD'
+      NetworkMode: host
+      TaskRoleArn: !GetAtt InferenceEcsServiceRole.Arn
+      RequiresCompatibilities: 
+      - EC2
+      PlacementConstraints:
+      - Expression: 'attribute:service_module==inference'
+        Type: memberOf
+      ContainerDefinitions:
+        - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Container'
+          EntryPoint:
+          - python
+          - app.py
+
+          MountPoints:
+          - ContainerPath: /mnt/efs_directory
+            ReadOnly: false
+            SourceVolume: EFS
+          Environment:
+          - Name: UVICORN_WORKERS
+            Value: !Ref UvicornWorkerCount
+          - Name: logs_bucket
+            Value: !Ref InferenceLogBucket
+          - Name: uploads_bucket
+            Value: !Ref FileManagerUploadsBucketName
+          - Name: codat_bucket
+            Value: !Ref CodatBucketName
+          - !If 
+            - InferenceVariable0Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 0, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable1Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 1, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable2Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 2, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable3Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 3, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable4Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 4, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable5Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 5, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 5, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable6Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 6, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 6, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable7Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 7, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 7, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable8Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 8, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 8, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable9Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 9, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 9, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable10Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 10, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 10, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable11Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 11, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 11, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable12Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 12, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 12, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable13Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 13, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 13, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable14Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 14, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 14, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable15Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 15, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 15, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable16Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 16, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 16, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable17Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 17, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 17, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable18Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 18, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 18, !Ref InferenceEcsVariables ] ] ]
+          - !If 
+            - InferenceVariable19Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 19, !Ref InferenceEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 19, !Ref InferenceEcsVariables ] ] ]
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref EcsCloudWatchLogGroup
+              awslogs-region: !Sub '${AWS::Region}'
+              awslogs-stream-prefix: Inference
+          Essential: true
+          Image: !Sub '${InferenceEcrRepository.RepositoryUri}:${InferenceImageTagStoreName}'
+          MemoryReservation: !Ref MemoryReservation
+          ResourceRequirements:
+          -  Type: GPU
+             Value: !Ref NumberofGPU
+      Volumes:
+        - Name: EFS
+          EFSVolumeConfiguration:
+            TransitEncryption: ENABLED
+            RootDirectory: /
+            FilesystemId: !Ref ModelElasticFileSystem
+            AuthorizationConfig: 
+              AccessPointId: !Ref ModelEFSAccessPoint
+              IAM: ENABLED    
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-TD'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-TD'
+  InferenceEcsServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-ServiceRole'
+      Tags:
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-ServiceRole'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-Inference-Ecs-Role'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Textract-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - textract:AnalyzeExpense
+            - textract:DetectDocumentText
+            - textract:StartDocumentTextDetection
+            - textract:StartExpenseAnalysis
+            - textract:GetExpenseAnalysis
+            - textract:StartDocumentAnalysis
+            - textract:AnalyzeDocument
+            - textract:GetDocumentTextDetection
+            - textract:GetDocumentAnalysis
+            - textract:AnalyzeID
+            Resource: '*'
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecr-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'ecr:GetDownloadUrlForLayer'
+            - 'ecr:BatchCheckLayerAvailability'
+            - 'ecr:BatchGetImage'
+            Resource: 
+            - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${InferenceEcrRepository}'
+          - Effect: Allow
+            Action:
+            - 'ecr:GetAuthorizationToken'
+            Resource: '*'
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-S3-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 's3:GetObject'
+            - 's3:PutObject'
+            - 's3:ListBucket'
+            Resource: 
+            - !Sub '${InferenceLogBucket.Arn}/*'
+            - !Sub '${InferenceLogBucket.Arn}'
+          - Effect: Allow
+            Action:
+            - 's3:GetObject'
+            - 's3:ListBucket'
+            Resource: 
+            - !Sub 'arn:aws:s3:::${FileManagerUploadsBucketName}/*'
+            - !Sub 'arn:aws:s3:::${CodatBucketName}/*'
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Logs-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: 
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}:log-stream:*'
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}'
+  InferenceInstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-InstanceRole'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - !Ref InstanceRoleManagedPolicy       
+      Tags: 
+        - 
+          Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-InferenceInstanceRole'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-InstanceRole'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Asg-Plcy'
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - 'autoscaling:CompleteLifecycleAction'
+                Resource:
+                  - !Sub 'arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Asg'
+                Effect: Allow
+              - Action:
+                  - 'autoscaling:DescribeAutoScalingInstances'
+                Resource:
+                  - '*'
+                Effect: Allow
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Ec2-Describe'
+          PolicyDocument:
+            Statement:
+              - Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:DescribeTags'
+                Resource:
+                - '*'
+                Effect: Allow
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Sqs-Plcy'
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - 'sqs:DeleteMessage'
+                  - 'sqs:ReceiveMessage'
+                Resource:
+                  - !Sub '${InferenceSQS.Arn}'
+                  - !Sub '${CRESQS.Arn}'
+                Effect: Allow                
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Ecs-Policies'
+          PolicyDocument:
+            Statement:
+            - Action:
+              - 'ecs:UpdateContainerInstancesState'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:DeregisterContainerInstance'
+              - 'ecs:SubmitAttachmentStateChanges'
+              - 'ecs:SubmitTaskStateChange'
+              - 'ecs:Poll'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:SubmitContainerStateChange'
+              - 'ecs:DescribeClusters'
+              Resource:
+              - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}'
+              - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/${ClusterName}/*'
+              Effect: Allow
+            - Action:
+              - 'ecs:DiscoverPollEndpoint'
+              Resource:
+              - '*'
+              Effect: Allow
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecr-Plcy'
+          PolicyDocument:            
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchCheckLayerAvailability'
+              - 'ecr:BatchGetImage'
+              Resource: 
+              - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${InferenceEcrRepository}'
+              - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcsRetrainEcrRepository}'
+            - Effect: Allow
+              Action:
+              - 'ecr:GetAuthorizationToken'
+              Resource: 
+              - '*'             
+  InferenceInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref InferenceInstanceRole
+  InferenceLaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Lt'
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: !Select [ 0 , !Ref InferenceVolumeConfig ]
+              VolumeType: !Select [ 1 , !Ref InferenceVolumeConfig ]
+              Iops: !Select [ 2 , !Ref InferenceVolumeConfig ]
+              Throughput: !Select [ 3 , !Ref InferenceVolumeConfig ]
+              DeleteOnTermination: 'true'
+              Encrypted: 'true'
+        InstanceType: !Ref InferenceInstanceType
+        IamInstanceProfile:
+          Name: !Ref InferenceInstanceProfile
+        SecurityGroupIds: 
+        - !If [SGValue01, !GetAtt FilemappingSg.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        DisableApiTermination: 'false'
+        ImageId: !Ref ServiceBaseAmiStoreName
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Server'
+              - Key: ApplicationRole
+                Value: !Sub '${ServiceName}-Inference-Instance'
+              - !If 
+                - InferenceTag0Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag1Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag2Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag3Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag4Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref InferenceCustomTags ] ] ]
+          - ResourceType: network-interface
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-InferenceNetworkInterface'
+              - Key: ApplicationRole
+                Value: !Sub '${ServiceName}-InferenceNetworkInterface'
+          - ResourceType: volume
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Vol'
+              - Key: ApplicationRole
+                Value: !Sub '${ServiceName}-Inference-Vol'
+              - !If 
+                - InferenceTag0Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag1Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag2Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag3Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref InferenceCustomTags ] ] ]
+              - !If 
+                - InferenceTag4Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref InferenceCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref InferenceCustomTags ] ] ]
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          InstanceMetadataTags: disabled
+        Monitoring:
+          Enabled: !Ref EnableDetailedMonitoring
+        UserData:
+          Fn::Base64:
+            !Sub |
+              Content-Type: multipart/mixed; boundary="//"
+              MIME-Version: 1.0
+
+              --//
+              Content-Type: text/cloud-config; charset="us-ascii"
+              MIME-Version: 1.0
+              Content-Transfer-Encoding: 7bit
+              Content-Disposition: attachment; filename="cloud-config.txt"
+
+              #cloud-config
+              cloud_final_modules:
+              - [scripts-user, always]
+
+              --//
+              Content-Type: text/x-shellscript; charset="us-ascii"
+              MIME-Version: 1.0
+              Content-Transfer-Encoding: 7bit
+              Content-Disposition: attachment; filename="userdata.txt"
+              
+              #! /bin/bash
+              set -e
+              if [ ! -f "/etc/ecs/sqs.py" ]; then
+                mkdir -p /etc/ecs/
+                echo "ECS_CLUSTER=${ClusterName}" >/etc/ecs/ecs.config
+                echo "ECS_ENABLE_CONTAINER_METADATA=true" >>/etc/ecs/ecs.config
+                echo "ECS_ENABLE_GPU_SUPPORT=true" >>/etc/ecs/ecs.config
+                echo "ECS_NVIDIA_RUNTIME=nvidia" >>/etc/ecs/ecs.config
+                echo "ECS_IMAGE_PULL_BEHAVIOR=prefer-cached" >>/etc/ecs/ecs.config
+                echo "ECS_INSTANCE_ATTRIBUTES={\"service_module\": \"inference\"}" >>/etc/ecs/ecs.config
+                echo '{"multi_pool_count": ${UvicornWorkerCount},"Asg_Name":"${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Asg", "CreSqsUrl":"${CRESQS}", "InterenceSqsUrl":"${InferenceSQS}","HookName":"${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference"}' >/etc/ecs/sqs_poll.json
+                cat <<EOT >> /etc/ecs/sqs.py
+              import os
+              import boto3
+              import json
+              import time
+              from botocore.exceptions import ClientError
+              from ec2_metadata import ec2_metadata
+              import logging
+              from multiprocessing import Pool
+              import urllib3
+              import urllib
+              Log_Format = "%(levelname)s %(asctime)s - %(message)s"
+              logging.basicConfig(filename = "/var/log/ecs/sqs.log",filemode = "w",format = Log_Format,level = logging.INFO)
+              logger = logging.getLogger()
+              instance_id = ec2_metadata.instance_id
+              region = ec2_metadata.region
+              sqs_client = boto3.client('sqs', region_name=region)
+              asg_client = boto3.client('autoscaling', region_name=region)
+              config_file = open('/etc/ecs/sqs_poll.json')
+              config = json.load(config_file)
+
+              cre_queue_url = config['CreSqsUrl']
+              inference_queue_url = config['InterenceSqsUrl']
+
+              asg_name = config['Asg_Name']
+              hook_name = config['HookName']
+              worker=config['multi_pool_count']
+              http = urllib3.PoolManager()
+              def delete_msg(queue_url, rh):
+                  try:
+                      response = sqs_client.delete_message(QueueUrl=queue_url,ReceiptHandle=rh)
+                  except ClientError as error:
+                      raise error
+              def receive_msg(x):
+                  try:
+                      cre_messages = sqs_client.receive_message(
+                          QueueUrl=cre_queue_url,
+                          MessageAttributeNames=['All'],
+                          MaxNumberOfMessages=1,
+                          WaitTimeSeconds=1
+                      )
+                      if "Messages" in cre_messages:
+                          for i in range(0,len(cre_messages['Messages'])):
+                              logger.debug(f'Worker No: {x} - Message: {cre_messages}')
+                              payload = json.loads(cre_messages['Messages'][i]['Body'])
+                              rh = cre_messages['Messages'][i]['ReceiptHandle']
+                              URL = "http://localhost:8080/creinvocations"
+                              response = http.request('POST', URL, body=json.dumps(payload))
+                              logger.info(f'Worker No: {x} - The inference container successfully processed the request!')
+                              delete_msg(cre_queue_url, rh)
+                          return
+                      else:
+                          logger.info(f'Worker No: {x} - There are no messages in {cre_queue_url}! Queue wait time exited!')
+                      
+                      inference_messages = sqs_client.receive_message(
+                          QueueUrl=inference_queue_url,
+                          MessageAttributeNames=['All'],
+                          MaxNumberOfMessages=1,
+                          WaitTimeSeconds=1
+                      )
+                      if "Messages" in inference_messages:
+                          for i in range(0,len(inference_messages['Messages'])):
+                              logger.debug(f'Worker No: {x} - Message: {inference_messages}')
+                              payload = json.loads(inference_messages['Messages'][i]['Body'])
+                              rh = inference_messages['Messages'][i]['ReceiptHandle']
+                              URL = "http://localhost:8080/invocations"
+                              response = http.request('POST', URL, body=json.dumps(payload))
+                              logger.info(f'Worker No: {x} - The inference container successfully processed the request!')
+                              delete_msg(inference_queue_url, rh)
+                      else:
+                          logger.info(f'Worker No: {x} - There are no messages in {inference_queue_url}! Queue wait time exited!')
+                  except ClientError as error:
+                      raise error
+              def queue(x):
+                  while True:
+                      try:
+                          response = asg_client.describe_auto_scaling_instances(InstanceIds=[instance_id], MaxRecords=1)
+                          logger.debug(f'Worker No: {x} - The current instance status: ' + response['AutoScalingInstances'][0]['LifecycleState'])
+                          if response['AutoScalingInstances'][0]['LifecycleState'] == "InService":
+                              URL = 'http://localhost:8080'
+                              response = http.request('GET', URL)
+                              if response.status == 200:
+                                  receive_msg(x)
+                              else:
+                                  logger.error(f'Worker No: {x} - Inference container not yet stable!')
+                                  time.sleep(2)
+                          elif response['AutoScalingInstances'][0]['LifecycleState'] == "Terminating:Wait":
+                              logger.info(f'Worker No: {x} - Picking the job is skipped!. Instance selected for termination!')
+                              break
+                          else:
+                              logger.info(f'Worker No: {x} - The current Inference instance status does not match the "InService" state')
+                              time.sleep(5)
+                      except:
+                          logger.error(f'Worker No: {x} - Error occurred in queue function!')
+                          time.sleep(3)
+              if __name__ == "__main__":
+                  try:
+                      process_arg = []
+                      for i in range(worker):
+                          process_arg.append(i)
+                      with Pool(worker) as p:
+                          p.map(queue, process_arg)
+                          logger.info("All the pending jobs are processed!. Signalling the lifecycle hook to terminate the instance!")
+                          response = asg_client.complete_lifecycle_action(LifecycleHookName=hook_name,AutoScalingGroupName=asg_name,LifecycleActionResult='CONTINUE',InstanceId=instance_id)
+                  except ClientError as error:
+                      logger.error(error)
+                      raise error
+              EOT
+              fi
+              python3 /etc/ecs/sqs.py &
+              echo "UserData Execution completed!" 
+              --//--
+  InferenceAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref AppSubnetIds
+      AutoScalingGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Asg'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InferenceLaunchTemplate
+        Version: !GetAtt InferenceLaunchTemplate.LatestVersionNumber
+      DesiredCapacity: !Select [ 0, !Ref InferenceAsgCapacity ]
+      DefaultInstanceWarmup: 180
+      MinSize: !Select [ 1, !Ref InferenceAsgCapacity ]
+      MaxSize: !Select [ 2, !Ref InferenceAsgCapacity ]
+      TerminationPolicies:
+        - OldestInstance
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Asg'
+          PropagateAtLaunch: false
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-Asg'
+          PropagateAtLaunch: false  
+  InferenceLifeCycleHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroup
+      DefaultResult: CONTINUE
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
+      HeartbeatTimeout: !Ref LifeCycleHookHeartBeatTimeOut
+      LifecycleHookName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference'
+  InferenceAsgScaleInPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties: 
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroup
+      PolicyType: StepScaling
+      AdjustmentType: ChangeInCapacity
+      MetricAggregationType: Maximum
+      StepAdjustments: 
+      - !If 
+        - IsScaleInRules0Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleInValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleInLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleInValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleInUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleInValues ]]]]
+      - !If 
+        - IsScaleInRules1Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleInValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleInLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleInValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleInUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleInValues ]]]]
+      - !If 
+        - IsScaleInRules2Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleInValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleInLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleInValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleInUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleInValues ]]]]
+      - !If 
+        - IsScaleInRules3Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleInValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleInLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleInValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleInUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleInValues ]]]]
+      - !If 
+        - IsScaleInRules4Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleInValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleInLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleInValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleInUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleInValues ]]]]
+  InferenceAsgScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties: 
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroup
+      PolicyType: StepScaling
+      AdjustmentType: ChangeInCapacity
+      MetricAggregationType: Maximum
+      StepAdjustments: 
+      - !If 
+        - IsScaleOutRules0Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleOutValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleOutLowerBound0Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleOutValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleOutUpperBound0Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 0, !Ref InferenceStepScaleOutValues ]]]]
+      - !If 
+        - IsScaleOutRules1Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleOutValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleOutLowerBound1Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleOutValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleOutUpperBound1Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 1, !Ref InferenceStepScaleOutValues ]]]]
+      - !If 
+        - IsScaleOutRules2Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleOutValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleOutLowerBound2Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleOutValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleOutUpperBound2Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 2, !Ref InferenceStepScaleOutValues ]]]]
+      - !If 
+        - IsScaleOutRules3Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleOutValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleOutLowerBound3Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleOutValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleOutUpperBound3Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 3, !Ref InferenceStepScaleOutValues ]]]]
+      - !If 
+        - IsScaleOutRules4Exist
+        - !Ref "AWS::NoValue"
+        - ScalingAdjustment: !Select [ 2, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleOutValues ]]]
+          MetricIntervalLowerBound: !If [ IsScaleOutLowerBound4Exist , !Ref "AWS::NoValue", !Select [ 0, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleOutValues ]]]]
+          MetricIntervalUpperBound: !If [ IsScaleOutUpperBound4Exist , !Ref "AWS::NoValue", !Select [ 1, !Split [ ':' , !Select [ 4, !Ref InferenceStepScaleOutValues ]]]]
+  InferenceScaleInAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-ScaleIn-Alarm'
+      AlarmActions:
+        - !Ref InferenceAsgScaleInPolicy
+      AlarmDescription: 'Alarm configured for inference auto scaling-ScaleIn'
+      ComparisonOperator: !Select [0, !Ref InferenceScaleInAlarmValues]
+      EvaluationPeriods: !Select [1, !Ref InferenceScaleInAlarmValues]      
+      Metrics:
+        - Id: e1
+          Expression: "q1 + q2"
+          Label: "Sum of the two SQS Metrics"
+        - Id: q1
+          MetricStat:
+            Metric:
+              MetricName: !Select [2, !Ref InferenceScaleInAlarmValues]
+              Namespace: !Select [3, !Ref InferenceScaleInAlarmValues]
+              Dimensions:
+              - Name: QueueName
+                Value: !GetAtt CRESQS.QueueName
+            Period: !Select [4, !Ref InferenceScaleInAlarmValues]
+            Stat: !Select [5, !Ref InferenceScaleInAlarmValues]
+            Unit: Count
+          ReturnData: false
+        - Id: q2
+          MetricStat:
+            Metric:
+              MetricName: !Select [2, !Ref InferenceScaleInAlarmValues]
+              Namespace: !Select [3, !Ref InferenceScaleInAlarmValues]
+              Dimensions:
+              - Name: QueueName
+                Value: !GetAtt InferenceSQS.QueueName
+            Period: !Select [4, !Ref InferenceScaleInAlarmValues]
+            Stat: !Select [5, !Ref InferenceScaleInAlarmValues]
+            Unit: Count
+          ReturnData: false
+      TreatMissingData: missing     
+      Threshold: !Select [6, !Ref InferenceScaleInAlarmValues]
+  InferenceScaleOutAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-ScaleOut-Alarm'
+      AlarmActions:
+        - !Ref InferenceAsgScaleOutPolicy
+      AlarmDescription: 'Alarm configured for inference auto scaling-ScaleOut'
+      ComparisonOperator: !Select [0, !Ref InferenceScaleOutAlarmValues]
+      EvaluationPeriods: !Select [1, !Ref InferenceScaleOutAlarmValues]      
+      Metrics:
+        - Id: e1
+          Expression: "q1 + q2"
+          Label: "Sum of the two SQS Metrics"
+        - Id: q1
+          MetricStat:
+            Metric:
+              MetricName: !Select [2, !Ref InferenceScaleOutAlarmValues]
+              Namespace: !Select [3, !Ref InferenceScaleOutAlarmValues]
+              Dimensions:
+              - Name: QueueName
+                Value: !GetAtt CRESQS.QueueName
+            Period: !Select [4, !Ref InferenceScaleOutAlarmValues]
+            Stat: !Select [5, !Ref InferenceScaleOutAlarmValues]
+            Unit: Count
+          ReturnData: false
+        - Id: q2
+          MetricStat:
+            Metric:
+              MetricName: !Select [2, !Ref InferenceScaleOutAlarmValues]
+              Namespace: !Select [3, !Ref InferenceScaleOutAlarmValues]
+              Dimensions:
+              - Name: QueueName
+                Value: !GetAtt InferenceSQS.QueueName
+            Period: !Select [4, !Ref InferenceScaleOutAlarmValues]
+            Stat: !Select [5, !Ref InferenceScaleOutAlarmValues]
+            Unit: Count
+          ReturnData: false
+      TreatMissingData: missing     
+      Threshold: !Select [6, !Ref InferenceScaleOutAlarmValues]
+      Threshold: !Select [6, !Ref InferenceScaleOutAlarmValues]
+  RetrainTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ExecutionRoleArn: !GetAtt RetrainEcsServiceRole.Arn
+      Family: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-TD'
+      NetworkMode: host
+      TaskRoleArn: !GetAtt RetrainEcsServiceRole.Arn
+      RequiresCompatibilities: 
+      - EC2
+      PlacementConstraints:
+      - Expression: 'attribute:service_module==retrain'
+        Type: memberOf
+      ContainerDefinitions:
+        - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Container'
+          EntryPoint:
+          - python
+          - app.py
+          
+          Environment:
+          - !If 
+            - RetrainVariable0Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable1Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable2Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable3Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable4Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable5Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable6Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable7Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable8Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable9Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable10Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 10, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 10, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable11Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 11, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 11, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable12Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 12, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 12, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable13Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 13, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 13, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable14Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 14, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 14, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable15Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 15, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 15, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable16Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 16, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 16, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable17Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 17, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 17, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable18Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 18, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 18, !Ref RetrainEcsVariables ] ] ]
+          - !If 
+            - RetrainVariable19Exist
+            - !Ref "AWS::NoValue"
+            - Name: !Select [ 0, !Split [ ':', !Select [ 19, !Ref RetrainEcsVariables ] ] ] 
+              Value: !Select [ 1, !Split [ ':', !Select [ 19, !Ref RetrainEcsVariables ] ] ]
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref EcsCloudWatchLogGroup
+              awslogs-region: !Sub '${AWS::Region}'
+              awslogs-stream-prefix: Retrain
+          Essential: true
+          Image: !Sub '${EcsRetrainEcrRepository.RepositoryUri}:${RetrainImageTagStoreName}'
+          MemoryReservation: !Ref MemoryReservation
+          MountPoints:
+          - ContainerPath: /mnt/efs_directory
+            ReadOnly: false
+            SourceVolume: EFS
+          ResourceRequirements:
+            -  Type: GPU
+               Value: !Ref NumberofGPU
+      Volumes:
+        - Name: EFS
+          EFSVolumeConfiguration:
+            TransitEncryption: ENABLED
+            RootDirectory: /
+            FilesystemId: !Ref ModelElasticFileSystem
+            AuthorizationConfig: 
+                AccessPointId: !Ref ModelEFSAccessPoint
+                IAM: ENABLED    
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-TD'
+        - Key: ApplicationRole
+          Value: !Sub 'Retrain-Td' 
+  RetrainEcsServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-ServiceRole'
+      Tags:
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-ServiceRole'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-Retrain-Ecs-Role'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecr-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'ecr:GetDownloadUrlForLayer'
+            - 'ecr:BatchCheckLayerAvailability'
+            - 'ecr:BatchGetImage'
+            Resource: 
+            - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcsRetrainEcrRepository}'
+          - Effect: Allow
+            Action:
+            - 'ecr:GetAuthorizationToken'
+            Resource: '*'
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Logs-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: 
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}:log-stream:*'
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EcsCloudWatchLogGroup}'
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-AutoScaling-Plcy'
+        PolicyDocument:            
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - autoscaling:TerminateInstanceInAutoScalingGroup
+            Resource: 
+            - !Sub 'arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Asg'                
+  RetrainInstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RetrainInstanceRole'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Ref InstanceRoleManagedPolicy
+      Tags: 
+        - 
+          Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RetrainInstanceRole'
+        - Key: ApplicationID
+          Value: !Sub '${ServiceName}-RetrainInstanceRole'
+      Policies:      
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Ecs-Policies'
+          PolicyDocument:
+            Statement:
+            - Action:
+              - 'ecs:UpdateContainerInstancesState'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:DeregisterContainerInstance'
+              - 'ecs:SubmitAttachmentStateChanges'
+              - 'ecs:SubmitTaskStateChange'
+              - 'ecs:Poll'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:SubmitContainerStateChange'
+              - 'ecs:DescribeClusters'
+              Resource:
+              - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}'
+              - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/${ClusterName}/*'
+              Effect: Allow
+            - Action:
+              - 'ecs:DiscoverPollEndpoint'
+              Resource:
+              - '*'
+              Effect: Allow
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Ec2-Describe'
+          PolicyDocument:
+            Statement:
+              - Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:DescribeTags'
+                Resource:
+                - '*'              
+                Effect: Allow
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Ecr-Plcy'
+          PolicyDocument:            
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchCheckLayerAvailability'
+              - 'ecr:BatchGetImage'
+              Resource: 
+              - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcsRetrainEcrRepository}'
+            - Effect: Allow
+              Action:
+              - 'ecr:GetAuthorizationToken'
+              Resource: 
+              - '*'              
+  RetrainInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref RetrainInstanceRole
+  RetrainLaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Lt'
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: !Select [ 0 , !Ref RetrainVolumeConfig ]
+              VolumeType: !Select [ 1 , !Ref RetrainVolumeConfig ]
+              Iops: !Select [ 2 , !Ref RetrainVolumeConfig ]
+              Throughput: !Select [ 3 , !Ref RetrainVolumeConfig ]
+              DeleteOnTermination: 'true'
+              Encrypted: 'true'
+        InstanceType: !Ref RetrainInstanceType
+        DisableApiTermination: 'false'
+        IamInstanceProfile:
+          Name: !Ref RetrainInstanceProfile
+        ImageId: !Ref ServiceBaseAmiStoreName
+        SecurityGroupIds: 
+        - !If [SGValue01, !GetAtt FilemappingSg.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Server'
+              - Key: ApplicationRole
+                Value: !Sub 'Retrain-Instance'
+              - !If 
+                - RetrainTag0Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag1Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag2Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag3Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag4Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RetrainCustomTags ] ] ]
+          - ResourceType: network-interface
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RetrainNetworkInterface'
+              - Key: ApplicationRole
+                Value: !Sub '${ServiceName}-RetrainNetworkInterface'
+          - ResourceType: volume
+            Tags:
+              - Key: Name
+                Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Vol'
+              - Key: ApplicationRole
+                Value: !Sub '${ServiceName}-Retrain-Vol'
+              - !If 
+                - RetrainTag0Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag1Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag2Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag3Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RetrainCustomTags ] ] ]
+              - !If 
+                - RetrainTag4Exist
+                - !Ref "AWS::NoValue"
+                - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RetrainCustomTags ] ] ] 
+                  Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RetrainCustomTags ] ] ]
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          InstanceMetadataTags: disabled
+        Monitoring:
+          Enabled: !Ref EnableDetailedMonitoring
+        UserData:
+          Fn::Base64:
+            !Sub |
+              #! /bin/bash
+              set -e
+              mkdir -p /etc/ecs/
+              echo "ECS_CLUSTER=${ClusterName}" >/etc/ecs/ecs.config
+              echo "ECS_ENABLE_CONTAINER_METADATA=true" >>/etc/ecs/ecs.config
+              echo "ECS_ENABLE_GPU_SUPPORT=true" >>/etc/ecs/ecs.config
+              echo "ECS_NVIDIA_RUNTIME=nvidia" >>/etc/ecs/ecs.config
+              echo "ECS_IMAGE_PULL_BEHAVIOR=always" >>/etc/ecs/ecs.config
+              echo "ECS_IMAGE_CLEANUP_INTERVAL=15m" >>/etc/ecs/ecs.config
+              echo "ECS_IMAGE_MINIMUM_CLEANUP_AGE=30m" >>/etc/ecs/ecs.config
+              echo "ECS_INSTANCE_ATTRIBUTES={\"service_module\": \"retrain\"}" >>/etc/ecs/ecs.config
+  RetrainAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref AppSubnetIds
+      AutoScalingGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Asg'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref RetrainLaunchTemplate
+        Version: !GetAtt RetrainLaunchTemplate.LatestVersionNumber
+      DesiredCapacity: !Select [ 0, !Ref RetrainAsgCapacity ]
+      MinSize: !Select [ 1, !Ref RetrainAsgCapacity ]
+      MaxSize: !Select [ 2, !Ref RetrainAsgCapacity ]
+      TerminationPolicies:
+        - OldestInstance
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Asg'
+          PropagateAtLaunch: false
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Retrain-Asg'
+          PropagateAtLaunch: false
+  InferenceSQS:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Sqs
+      VisibilityTimeout: !Ref SqsVisibilityTimeout
+      KmsMasterKeyId: 'alias/aws/sqs'
+      RedrivePolicy:
+        deadLetterTargetArn : !GetAtt InferenceDeadLetterQueue.Arn
+        maxReceiveCount : 1
+  InferenceDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Dlq
+      RedriveAllowPolicy: !Sub >-
+         {"redrivePermission":"byQueue","sourceQueueArns":["arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Sqs", "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CRE-Sqs"]}				
+      VisibilityTimeout: !Ref SqsVisibilityTimeout
+      KmsMasterKeyId: 'alias/aws/sqs'  
+  InferenceEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref InferenceEcrRepoName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub '{ "rules": [ { "rulePriority": 1, "description": " lifecycle of latest ${EcrImageCountDeleteAfter}", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": ${EcrImageCountDeleteAfter} }, "action": { "type": "expire" } } ] }'     
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Inference-Ecr-Repo'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Inference-Ecr-Repo'
+  EcsRetrainEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref EcsRetrainEcrRepoName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub '{ "rules": [ { "rulePriority": 1, "description": " lifecycle of latest ${EcrImageCountDeleteAfter}", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": ${EcrImageCountDeleteAfter} }, "action": { "type": "expire" } } ] }'     
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain-Ecr-Repo'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Retrain-Ecr-Repo'
+  LambdaRetrainEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref LambdaRetrainEcrRepoName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub '{ "rules": [ { "rulePriority": 1, "description": " lifecycle of latest ${EcrImageCountDeleteAfter}", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": ${EcrImageCountDeleteAfter} }, "action": { "type": "expire" } } ] }'     
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RetrainLambda-Repo'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Retrain-LambdaRepo'
+  RetrainECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ClusterName
+      LaunchType: EC2
+      SchedulingStrategy: DAEMON
+      ServiceName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain'
+      TaskDefinition: !Ref RetrainTaskDefinition
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Retrain'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Retrain-Ecs-Service'
+  
+  CRESQS:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CRE-Sqs
+      VisibilityTimeout: !Ref SqsVisibilityTimeout
+      KmsMasterKeyId: 'alias/aws/sqs'
+      RedrivePolicy:
+        deadLetterTargetArn : !GetAtt InferenceDeadLetterQueue.Arn
+        maxReceiveCount : 1
+Outputs:
+  LambdaRetrainEcrRepositoryName:
+    Value: !Ref LambdaRetrainEcrRepository
+  InferenceEcrRepoName:
+    Value: !Ref InferenceEcrRepoName
+  EcsRetrainEcrRepoName:
+    Value: !Ref EcsRetrainEcrRepoName
+  EfsAccessPointId:
+    Value: !Ref ModelEFSAccessPoint
+  InferenceAsgName:
+    Value: !Ref InferenceAutoScalingGroup
+  RetrainAsgName:
+    Value: !Ref RetrainAutoScalingGroup
+  RetrainTaskDefinitionName:
+    Value: !Select [ 0, !Split [ ':', !Select [ 1,!Split ['/', !Ref RetrainTaskDefinition ]] ] ] 
+  InferenceTaskDefinitionName:
+    Value: !Select [ 0, !Split [ ':', !Select [ 1,!Split ['/', !Ref InferenceTaskDefinition]] ] ] 
+  InferenceSQSName:
+    Value: !GetAtt InferenceSQS.QueueName
+  CRESQSName:
+    Value: !GetAtt CRESQS.QueueName
+  RetrainServiceName:
+    Value: !GetAtt RetrainECSService.Name
+  InfraStackName:
+    Value: !Sub '${AWS::StackName}'
+  InferenceServiceName:
+    Value: !GetAtt InferenceECSService.Name
+  InferenceInstanceProfileName:
+    Value: !Ref InferenceInstanceProfile
+  FilemappingSgID:
+    Value: !If [SGValue01, !GetAtt FilemappingSg.GroupId, "-"]

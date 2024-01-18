@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Description: This template creates AWS Key Management Service (AWS KMS) to use across wide range of AWS Services and in other applications. Version- 0.1 
+Parameters:
+  ResourceNamePrefix: 
+    Type: String 
+    Description: 'Enter prefix for Resource Names.' 
+  EnvironmentType: 
+    Type: String 
+    Description: 'An Environment name that will be prefixed to resource names.' 
+  ServiceName: 
+    Type: String 
+    Description: 'Enter the service name for which the kms key is used.' 
+  PendingWindowDays: 
+    Type: Number 
+    Description: Specify the number of days for AWS KMS Key deletion after removing the CloudFormation stack.
+    MinValue: 7 
+    MaxValue: 30 
+  AllowedRoleArn: 
+    Type: CommaDelimitedList 
+    Description: Enter the list of Amazon Resource Names(ARNs) for AWS KMS Key. 
+  AllowedServices: 
+    Type: CommaDelimitedList 
+    Description: Enter the list of Services for AWS KMS Key.
+  AllowedPrincipalArn: 
+    Type: CommaDelimitedList 
+    Description: Enter the list of User name part of Amazon Resource Names(ARNs)
+  Alias: 
+    Type: String 
+    Description: 'Enter the service name for which the CMK key is used.'
+Conditions: 
+  IsAllowedServicesEmpty: !Equals ["", !Select [0, !Ref AllowedServices] ] 
+  IsAllowedRoleArnEmpty: !Equals ["", !Select [0, !Ref AllowedRoleArn] ] 
+  IsAllowedPrincipalArnEmpty: !Equals ["", !Select [0, !Ref AllowedPrincipalArn] ] 
+Resources:
+  CmkKey: 
+    Type: AWS::KMS::Key 
+    Properties: 
+      Description: AWS KMS Key to use across wide range of AWS Services. 
+      Enabled: true 
+      EnableKeyRotation: true 
+      KeyPolicy: 
+        Version: '2012-10-17' 
+        Statement: 
+          - Sid: "Kmsreadwriteaccess" 
+            Effect: Allow 
+            Principal: 
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 
+              - "kms:CreateAlias" 
+              - "kms:CreateGrant" 
+              - "kms:CreateKey" 
+              - "kms:DescribeKey" 
+              - "kms:EnableKey" 
+              - "kms:EnableKeyRotation" 
+              - "kms:ListAliases" 
+              - "kms:ListGrants" 
+              - "kms:ListKeyPolicies"
+              - "kms:ListKeys" 
+              - "kms:ListResourceTags" 
+              - "kms:ListRetirableGrants" 
+              - "kms:PutKeyPolicy" 
+              - "kms:UpdateAlias" 
+              - "kms:UpdateKeyDescription" 
+              - "kms:RevokeGrant" 
+              - "kms:DisableKey" 
+              - "kms:DisableKeyRotation" 
+              - "kms:GetKeyPolicy" 
+              - "kms:GetKeyRotationStatus" 
+              - "kms:DeleteAlias" 
+              - "kms:TagResource" 
+              - "kms:UntagResource" 
+              - "kms:ScheduleKeyDeletion" 
+              - "kms:CancelKeyDeletion" 
+            Resource: "*"       
+          - !If 
+            - IsAllowedServicesEmpty 
+            - !Ref "AWS::NoValue" 
+            - Sid: "Allow use of the key" 
+              Effect: 'Allow' 
+              Principal: 
+                Service: !Ref AllowedServices 
+              Action: 
+                - "kms:Encrypt" 
+                - "kms:Decrypt" 
+                - "kms:ReEncryptTo" 
+                - "kms:ReEncryptFrom" 
+                - "kms:GenerateDataKey" 
+                - "kms:GenerateDataKeyWithoutPlaintext" 
+                - "kms:DescribeKey" 
+              Resource: "*" 
+          - !If 
+            - IsAllowedRoleArnEmpty 
+            - !Ref "AWS::NoValue" 
+            - Sid: "Allow use of the key" 
+              Effect: 'Allow' 
+              Principal: 
+                AWS: !Ref AllowedRoleArn 
+              Action: 
+                - "kms:Encrypt" 
+                - "kms:Decrypt" 
+                - "kms:ReEncryptTo" 
+                - "kms:ReEncryptFrom"    
+                - "kms:GenerateDataKey" 
+                - "kms:GenerateDataKeyWithoutPlaintext" 
+                - "kms:DescribeKey" 
+              Resource: "*" 
+          - !If 
+            - IsAllowedPrincipalArnEmpty 
+            - !Ref "AWS::NoValue" 
+            - Sid: "Allow use of key" 
+              Effect: Allow 
+              Principal: '*' 
+              Action: 
+                - "kms:Encrypt" 
+                - "kms:Decrypt" 
+                - "kms:ReEncryptTo" 
+                - "kms:ReEncryptFrom" 
+                - "kms:GenerateDataKey" 
+                - "kms:GenerateDataKeyWithoutPlaintext" 
+                - "kms:DescribeKey" 
+              Resource: "*" 
+              Condition: 
+                !If 
+                - IsAllowedPrincipalArnEmpty 
+                - !Ref "AWS::NoValue" 
+                - StringLike: 
+                    'aws:PrincipalArn': !Ref AllowedPrincipalArn 
+      KeySpec: SYMMETRIC_DEFAULT 
+      KeyUsage: ENCRYPT_DECRYPT 
+      PendingWindowInDays: !Ref PendingWindowDays 
+      Tags: 
+        - Key: Name 
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Cmk' 
+        - Key: ApplicationRole 
+          Value: !Sub '${ServiceName}-Cmk'
+  CmkAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: !Ref Alias
+      TargetKeyId: !Ref CmkKey
+Outputs:
+  CmkKeyID:
+    Value: !Ref CmkKey
+  CmkKeyArn:
+    Value: !GetAtt CmkKey.Arn
+  CmkAliasName:
+    Value: !Ref CmkAlias

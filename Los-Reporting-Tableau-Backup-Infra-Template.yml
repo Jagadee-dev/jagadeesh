@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create SSM Maintenance Window for Tableau Server.
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter the prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Enter the environment type according to your need.
+  ServiceName:
+    Type: String
+    Description: Enter the servicename for resource creation.
+  InstanceID:
+    Type: String
+    Description: Enter the EC2 Instance ID for which SSM Maintenance Window should be configured.
+  TableauDataBackupBucketName:
+    Type: String
+    Description: Enter the Tableau DataBackup S3 Bucket name to store logs.
+  ScheduledTime:
+    Type: String
+    Description: Enter the time to schedule for Tableau Backup in your AWS Account.
+  RetentionDays:
+    Type: String
+    Description: Enter the number of days to retain the logs for Tableau Server.
+  Version:
+    Type: String
+    Description: Enter the version to Export. Ex- 20231.23.0316.0857
+Resources:
+  TableauMwRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Mw-Role'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ssm.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Path: /
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Mw-Role'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Mw-Plcy'
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:CancelCommand'
+                  - 'ssm:GetCommandInvocation'
+                  - 'ssm:ListCommandInvocations'
+                  - 'ssm:ListCommands'
+                  - 'ssm:ListTagsForResource'
+                  - 'ssm:GetCalendarState'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'ssm:SendCommand'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript'
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceID}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:managed-instance/${InstanceID}'
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeInstanceAttribute'
+                  - 'ec2:DescribeInstanceStatus'
+                  - 'ec2:DescribeInstances'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'sns:Publish'
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-Critical'
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Mw-Role'
+  TableauCleanupMw:
+    Type: 'AWS::SSM::MaintenanceWindow'
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Cleanup-Mw'
+      Description: 'This maintenance windows active for tableau server data archive and clean up.'
+      AllowUnassociatedTargets: 'True'
+      Schedule: !Ref ScheduledTime
+      Duration: '1'
+      Cutoff: '0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Cleanup-Mw'
+  CleanUpTask:
+    Type: 'AWS::SSM::MaintenanceWindowTask'
+    Properties:
+      MaxErrors: '1'
+      ServiceRoleArn: !GetAtt TableauMwRole.Arn
+      Priority: 0
+      MaxConcurrency: '100'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Cleanup-Task'
+      TaskArn: AWS-RunShellScript
+      WindowId: !Ref TableauCleanupMw
+      TaskType: RUN_COMMAND
+      Targets:
+        - Key: InstanceIds
+          Values: 
+            - !Ref InstanceID
+      TaskInvocationParameters:
+        MaintenanceWindowRunCommandParameters:
+          TimeoutSeconds: '3600'
+          OutputS3BucketName: !Ref TableauDataBackupBucketName
+          OutputS3KeyPrefix: Tableau-Mw-Execution-Logs/
+          Parameters:
+            executionTimeout: 
+            - '3600'
+            commands: 
+            - !Sub |
+              set -e
+              DATE=$(date +%Y%m%d_%H%M%S)
+              echo "Starting-$DATE"
+              TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+              INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+              RETENTION_DAYS=${RetentionDays}
+              SERVER_NAME=${ResourceNamePrefix}-${EnvironmentType}-Reporting-Tableau-Srvr
+              SNAPSHOT_BUCKET="${TableauDataBackupBucketName}/Snapshots/"
+              DESTINATION_BUCKET="${TableauDataBackupBucketName}/Tableau-Logs-Backup/"
+              SNAPSHOT_FILE="tsm_snapshot"
+              BASE_PATH="/var/opt/tableau/tableau_server/data/tabsvc/files/log-archives/"
+              export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/opt/tableau/tableau_server/packages/customer-bin.${Version}"
+              tsm maintenance backup -f "$SNAPSHOT_FILE($INSTANCE_ID)_$DATE"
+              aws s3 cp "/var/opt/tableau/tableau_server/data/tabsvc/files/backups/$SNAPSHOT_FILE($INSTANCE_ID)_$DATE.tsbak" s3://$SNAPSHOT_BUCKET --storage-class STANDARD
+              rm -f "/var/opt/tableau/tableau_server/data/tabsvc/files/backups/$SNAPSHOT_FILE($INSTANCE_ID)_$DATE.tsbak"
+              tsm maintenance ziplogs --all --file "$SERVER_NAME($INSTANCE_ID)_$DATE"
+              aws s3 cp "$BASE_PATH$SERVER_NAME($INSTANCE_ID)_$DATE.zip" s3://$DESTINATION_BUCKET --storage-class STANDARD
+              rm -f "$BASE_PATH$SERVER_NAME($INSTANCE_ID)_$DATE.zip"
+              tsm maintenance cleanup --all --log-files-retention $RETENTION_DAYS
+              echo Completed!
+          ServiceRoleArn: !GetAtt TableauMwRole.Arn
+          NotificationConfig:
+            NotificationArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${ResourceNamePrefix}-${EnvironmentType}-Critical'
+            NotificationType: Command
+            NotificationEvents:
+              - TimedOut
+              - Cancelled
+              - Failed

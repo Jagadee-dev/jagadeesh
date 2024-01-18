@@ -1,0 +1,287 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A CloudFormation template to create SecurityGroups with Inbound & Outbound Rules Version.1.0
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "NamingConvention Configurations"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+          - Purpose
+      - Label:
+          default: "SecurityGroup Configurations"
+        Parameters:
+          - VpcId
+          - IngressRules
+          - EgressRules
+          - SGRulesRequired
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for resource names.
+  EnvironmentType:
+    Type: String
+    Description: Enter environmenttype according to need.
+  ServiceName:
+    Type: String
+    Description: Enter Servicename for which resources are being created.
+  Purpose:
+    Type: String
+    Description: Enter the purpose for this securitygroup creation.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Select the VPC ID for SecurityGroup creation.
+  IngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-abcd1234). The values are used to create the security group rules dynamically.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  EgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:443:443:sg-abcd1234). The values are used to create the security group rules dynamically. To create AllTraffic to anywhere use the parameter default value.'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  SGRulesRequired:
+    Type: CommaDelimitedList
+    Description: Enter true to create ALL TRAFFIC Inbound, Outbound Rules along with SecurityGroup & false to skip creation.
+Conditions:
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref IngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ]]], "sg" ]
+  Egress0Exist: !Equals [ !Select [ 0, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref EgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ]]], "sg" ]
+  AllTrafficInboundruleRequired: !Equals ['true', !Select [0, !Ref SGRulesRequired]]
+  AllTrafficOutboundruleRequired: !Equals ['true', !Select [1, !Ref SGRulesRequired]]
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Purpose}-SG'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref IngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref IngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref EgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref EgressRules ] ] ] ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${Purpose}-SG'
+        - Key: ApplicationRole
+          Value: !Sub '${EnvironmentType}-${ServiceName}-${Purpose}-SG'
+  InboundRule:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Condition: AllTrafficInboundruleRequired
+    Properties:
+      Description: 'Inbound rule to be attached to SecurityGroup being created'
+      IpProtocol: -1
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !GetAtt SecurityGroup.GroupId
+      GroupId: !GetAtt SecurityGroup.GroupId
+  OutboundRule:
+    Type: 'AWS::EC2::SecurityGroupEgress'
+    Condition: AllTrafficOutboundruleRequired
+    Properties:
+      Description: 'Outbound rule to be attached to SecurityGroup being created'
+      IpProtocol: -1
+      FromPort: -1
+      ToPort: -1
+      DestinationSecurityGroupId: !GetAtt SecurityGroup.GroupId
+      GroupId: !GetAtt SecurityGroup.GroupId
+Outputs:
+  SecurityGroupId:
+    Value: !GetAtt SecurityGroup.GroupId
+    Description: ID of SecurityGroup created as part of this template.

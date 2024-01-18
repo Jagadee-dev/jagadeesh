@@ -1,0 +1,2144 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: In this stack we are creating ReplicationSubnetGroup, ReplicationInstance, ReplicationTask, Endpoints and dms role. This purpose of this setup is to fetch the data lender wise from rds and moving the same to digapp bucket. 
+Parameters:
+  VpcId:
+    Type: String
+    Description: VPC Id for security group.. should match with subnet
+  ServiceName:
+    Type: String
+    Description: Enter name of the Service
+  EnvironmentType:
+    Type: String
+    Description: Name of environment  with full length to deploy lambdas
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Resource Name
+  DBNames:
+    Type: CommaDelimitedList
+    Description: Specify the name of the endpoint database.
+    Default: 'N,N,N,N,N,N,N,N,N,N,N,N'
+  RDSSecretManagerArn:
+    Type: String
+    Description: Postgres Secret Manager Arn
+  DIGAppBucketName:
+    Type: String
+    Description: Specify the digapp bucket to migrate the data from psql.
+  KmsKeyId:
+    Type: String
+  DMSReplicationInstanceArn:
+    Type: String
+  DmsCustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to security group created during launch.'
+    Default: "None,None,None,None,None"
+  CloudwatchRetentionDays:
+    Type: Number
+    Description: Enter the number of cloudwatch retention days.
+Conditions:
+  DBName0Exist: !Not [!Equals [!Select [ 0, !Ref DBNames ], "N"]]
+  DBName1Exist: !Not [!Equals [!Select [ 1, !Ref DBNames ], "N"]]
+  DBName2Exist: !Not [!Equals [!Select [ 2, !Ref DBNames ], "N"]]
+  DBName3Exist: !Not [!Equals [!Select [ 3, !Ref DBNames ], "N"]]
+  DBName4Exist: !Not [!Equals [!Select [ 4, !Ref DBNames ], "N"]] 
+  DBName5Exist: !Not [!Equals [!Select [ 5, !Ref DBNames ], "N"]]
+  DBName6Exist: !Not [!Equals [!Select [ 6, !Ref DBNames ], "N"]]
+  DBName7Exist: !Not [!Equals [!Select [ 7, !Ref DBNames ], "N"]]
+  DBName8Exist: !Not [!Equals [!Select [ 8, !Ref DBNames ], "N"]]
+  DBName9Exist: !Not [!Equals [!Select [ 9, !Ref DBNames ], "N"]]
+  CustomTag0Exist: !Equals [ !Select [0, !Ref DmsCustomTags], "None"]
+  CustomTag1Exist: !Equals [ !Select [1, !Ref DmsCustomTags], "None"]
+  CustomTag2Exist: !Equals [ !Select [2, !Ref DmsCustomTags], "None"]
+  CustomTag3Exist: !Equals [ !Select [3, !Ref DmsCustomTags], "None"]
+  CustomTag4Exist: !Equals [ !Select [4, !Ref DmsCustomTags], "None"]
+Resources:
+  DMSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ExecutionRole
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - dms.us-east-1.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole
+      - arn:aws:iam::aws:policy/service-role/AmazonDMSCloudWatchLogsRole
+      Path: /
+      Policies:
+      - PolicyName: AwsDataIntegrationSecretPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:DescribeSecret
+            Resource: !Ref RDSSecretManagerArn   
+          - Effect: Allow
+            Action: 
+            - s3:GetObject
+            - s3:DeleteObject
+            - s3:PutObject
+            - s3:ListBucket
+            Resource:
+            - !Sub 'arn:aws:s3:::${DIGAppBucketName}/*'
+            - !Sub 'arn:aws:s3:::${DIGAppBucketName}'
+  PostgreSQLSourceEndpoint0:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName0Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 0, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint1:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName1Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 1, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint2:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName2Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 2, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint3:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName3Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 3, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint4:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName4Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 4, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint5:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName5Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 5, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint6:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName6Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 6, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint7:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName7Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 7, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint8:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName8Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 8, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], PsqlEndpnt ] ]
+  PostgreSQLSourceEndpoint9:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName9Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], PsqlEndpnt ] ]
+      ResourceIdentifier: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], PsqlEndpnt ] ]
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Select [ 9, !Ref DBNames ]
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-PsqlEndpnt
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], PsqlEndpnt ] ]
+  S3TargetEndpoint0:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName0Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 0, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint1:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName1Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 1, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint2:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName2Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 2, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint3:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName3Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 3, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint4:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName4Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 4, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint5:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName5Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 5, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint6:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName6Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 6, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint7:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName7Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 7, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint8:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName8Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 8, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], S3Endpnt ] ]
+  S3TargetEndpoint9:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBName9Exist
+    Properties:
+      EndpointIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], S3Endpnt ] ]
+      ResourceIdentifier:  !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], S3Endpnt ] ]
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Select [ 9, !Ref DBNames] ]]
+        ServiceAccessRoleArn: !GetAtt 
+          - DMSExecutionRole
+          - Arn
+      Tags:
+        - Key: ApplicationRole
+          Value: DMS-S3Endpoint
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], S3Endpnt ] ]
+  DMSReplicationTasks0:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName0Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 0, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint0
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 0, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint0
+  DMSReplicationTasks1:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName1Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 1, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint1
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 1, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint1
+  DMSReplicationTasks2:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName2Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 2, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint0
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 2, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint2
+  DMSReplicationTasks3:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName3Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 3, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint3
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 3, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint3
+  DMSReplicationTasks4:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName4Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 4, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint4
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 4, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint4
+  DMSReplicationTasks5:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName5Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 5, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint5
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 5, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint5
+  DMSReplicationTasks6:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName6Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 6, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint6
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 6, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint6
+  DMSReplicationTasks7:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName7Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 7, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint7
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 7, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint7
+  DMSReplicationTasks8:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName8Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 8, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint8
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 8, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint8
+  DMSReplicationTasks9:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBName9Exist
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Select [ 9, !Ref DBNames]
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint9
+      Tags:
+        - Key: ApplicationRole
+          Value: DMSReplicationTask
+        - Key: Name
+          Value: !Join [ "-", [ !Ref ResourceNamePrefix, !Ref EnvironmentType, !Select [ 9, !Ref DBNames], ReplicationTask ] ]
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint9
+  DmsLogGroup0: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName0Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 0, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup1: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName1Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 1, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup2: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName2Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 2, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup3: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName3Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 3, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup4: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName4Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 4, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup5: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName5Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 5, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup6: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName6Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 6, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup7: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName7Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 7, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup8: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName8Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 8, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+  DmsLogGroup9: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBName9Exist
+    Properties: 
+      LogGroupName: !Join 
+            - ''
+            - - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-'
+              - !Select [ 9, !Ref DBNames]
+              - '-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays

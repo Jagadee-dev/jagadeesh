@@ -1,0 +1,1276 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template deploys a VPC,Flow Logs,IGW, NAT, Routetable & Asociation, 10 public,10 private and 10 additional subnets spread across
+  6 Availability Zones.Version 2.0.Here is the Readmefile link for more information https://github.com/idexcel-technologies-pvt-ltd/aws-infra-templates/blob/dev/subtitles/Ec2_Vpc.md.
+  
+Parameters:
+  EnvironmentType:
+    Description: Specify environment type.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Default: Nds-Cync-Los
+    Description: Specify prefix for Resource Name.
+  Purpose:
+    Type: String
+    Default: Ingress
+    Description: "Specify the purpose of the Creation, example:Ingress,Egress..etc."
+  VpcCIDR:
+    Description: For New Vpc creation specify "Valid CIDR" or else "None".
+    Type: String
+    Default: 'None'
+  VpcNewCidrBlock:
+    Type: String
+    Description: For Vpc CIDR addition to the Vpc, specify "Valid CIDR" or else "None".
+    Default: 'None'
+  SubnetAZs:
+    Description: 'Please select the Availability Zone '
+    Type: CommaDelimitedList
+  AdditionalSubnetAZs:
+    Description: 'Please select the Availability Zone for additional subnets '
+    Type: CommaDelimitedList
+    
+  VpcFlowLogsS3BucketName:
+    Type: String
+    Description: (Optional)Mention the bucket name for storing Flow Logs, If its left empty flow logs will not be created.
+     
+  PublicSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 'None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None'
+    Description: "Specify CIDRs for public subnets and specify the name of subnet, if you want to create mention valid subnet cidr and name ex: 10.0.1.0/24:Public,None:None... a Min of 1 to Max of 10 Subnets can be created" 
+  PrivateSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 'None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None' 
+    Description: "Specify CIDRs for private subnets and specify the name of subnet, if you want to create mention valid subnet cidr and name ex: 10.0.2.0/24:Private,None:None...a Min of 1 to Max of 10 Subnets can be created"
+  AdditionalSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 'None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None,None:None' 
+    Description: "Specify CIDRs for Additional subnets and specify the name of subnet, if you want to create mention valid subnet cidr and name ex: 10.0.2.0/24:Additional,None:None...a Min of 1 to Max of 10 Subnets can be created"
+  TransitGatewayId:
+    Type: String
+    Description: (Optional)Specify the TransitGatewayId for route creation
+  PrivateTgwDestinationIps:
+    Type: CommaDelimitedList
+    Default: 'None,None,None,None,None,None,None,None,None,None' 
+    Description: "Specify list of ip's for tgw route creation for Private subnets, Trasitgateway id should be passed before passing Ip's here" 
+  AdditionalTgwDestinationIps:
+    Type: CommaDelimitedList
+    Default: 'None,None,None,None,None,None,None,None,None,None' 
+    Description: "Specify list of ip's for tgw route creation for Additional subnets, Trasitgateway id should be passed before passing Ip's here"     
+  
+  ExistingVPCId :
+    Type: String
+    Description: Provide existing vpcid for new vpc cidr addition, extra subnet creation & flow logs.
+    Default: "None"
+  ExistingNATId :
+    Type: String
+    Description: To create New NAT resource mention "None" or Specify Any NATID, If it is not required leave the parameter empty.
+  DefaultNatRouteRuleRequired:
+    Type: String
+    Description: Select True if NATGateway is required,If not select False.
+    AllowedValues:
+    - true
+    - false
+  ExistingIGWId :
+    Type: String
+    Description: To create New IGW resource mention "None" or Specify Any IgwID, If it is not required leave the parameter empty.
+    Default: None
+  DefaultIgwRouteRuleRequired:
+    Type: String
+    Description: Select True if InternetGateway is required,If not select False.
+    AllowedValues:
+    - true
+    - false
+  ExistingPublicSubnetId :
+    Type: String
+    Description: If you are not creating NATGateway with existing public subnet then give "None" &&& If creating through existing public subnet, mention public subnetid.
+    Default: None
+    
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label: 
+          default: Naming Conventions
+        Parameters:
+          - EnvironmentType
+          - ResourceNamePrefix
+          - Purpose
+      - Label:
+          default: Existing Resources
+        Parameters:
+          - ExistingVPCId
+          - DefaultNatRouteRuleRequired
+          - ExistingNATId
+          - DefaultIgwRouteRuleRequired
+          - ExistingIGWId
+          - ExistingPublicSubnetId
+      - Label: 
+          default: VPC Details
+        Parameters:
+          - VpcCIDR
+          - VpcNewCidrBlock
+          - VpcFlowLogsS3BucketName
+      - Label: 
+          default: Subnet Details
+        Parameters:
+          - PublicSubnetCIDRs
+          - PrivateSubnetCIDRs
+          - AdditionalSubnetCIDRs
+          - SubnetAZs
+          - AdditionalSubnetAZs
+      - Label:
+          default: TransitGateway Details
+        Parameters:
+          - TransitGatewayId
+          - PrivateTgwDestinationIps
+          - AdditionalTgwDestinationIps
+Conditions:
+  IsFlowLogsRequired: !Not [!Equals [ !Ref VpcFlowLogsS3BucketName, ""]]  
+ 
+  IsVPCRequired: !Not [!Equals [!Ref VpcCIDR, "None"]]
+  IsExtraVpcCidrRequired: !Not [!Equals [!Ref VpcNewCidrBlock, "None"]]
+  
+  UseExitingIgw: !Equals [ !Ref ExistingIGWId, "None"]
+  IsDefaultIgwRouteRuleRequired: !Equals [!Ref DefaultIgwRouteRuleRequired, "true"]
+  
+  UseExistingNat: !Equals [ !Ref ExistingNATId, "None"]
+  IsDefaultNatRouteRuleRequired: !Equals [!Ref DefaultNatRouteRuleRequired, "true"]
+  
+  PublicSubnetCIDRs0Exist: !Not [!Equals [ !Select [0, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs1Exist: !Not [!Equals [ !Select [1, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs2Exist: !Not [!Equals [ !Select [2, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs3Exist: !Not [!Equals [ !Select [3, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs4Exist: !Not [!Equals [ !Select [4, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs5Exist: !Not [!Equals [ !Select [5, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs6Exist: !Not [!Equals [ !Select [6, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs7Exist: !Not [!Equals [ !Select [7, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs8Exist: !Not [!Equals [ !Select [8, !Ref PublicSubnetCIDRs], "None:None"]]
+  PublicSubnetCIDRs9Exist: !Not [!Equals [ !Select [9, !Ref PublicSubnetCIDRs], "None:None"]]
+  
+  PrivateSubnetCIDRs0Exist: !Not [!Equals [ !Select [0, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs1Exist: !Not [!Equals [ !Select [1, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs2Exist: !Not [!Equals [ !Select [2, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs3Exist: !Not [!Equals [ !Select [3, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs4Exist: !Not [!Equals [ !Select [4, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs5Exist: !Not [!Equals [ !Select [5, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs6Exist: !Not [!Equals [ !Select [6, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs7Exist: !Not [!Equals [ !Select [7, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs8Exist: !Not [!Equals [ !Select [8, !Ref PrivateSubnetCIDRs], "None:None"]]
+  PrivateSubnetCIDRs9Exist: !Not [!Equals [ !Select [9, !Ref PrivateSubnetCIDRs], "None:None"]]
+  
+  AdditionalSubnetCIDRs0Exist: !Not [!Equals [ !Select [0, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs1Exist: !Not [!Equals [ !Select [1, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs2Exist: !Not [!Equals [ !Select [2, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs3Exist: !Not [!Equals [ !Select [3, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs4Exist: !Not [!Equals [ !Select [4, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs5Exist: !Not [!Equals [ !Select [5, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs6Exist: !Not [!Equals [ !Select [6, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs7Exist: !Not [!Equals [ !Select [7, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs8Exist: !Not [!Equals [ !Select [8, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  AdditionalSubnetCIDRs9Exist: !Not [!Equals [ !Select [9, !Ref AdditionalSubnetCIDRs], "None:None"]]
+  
+  TgwDestinationPrivateIps0Exist: !Not [!Equals [ !Select [0, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps1Exist: !Not [!Equals [ !Select [1, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps2Exist: !Not [!Equals [ !Select [2, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps3Exist: !Not [!Equals [ !Select [3, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps4Exist: !Not [!Equals [ !Select [4, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps5Exist: !Not [!Equals [ !Select [5, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps6Exist: !Not [!Equals [ !Select [6, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps7Exist: !Not [!Equals [ !Select [7, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps8Exist: !Not [!Equals [ !Select [8, !Ref PrivateTgwDestinationIps], "None"]]
+  TgwDestinationPrivateIps9Exist: !Not [!Equals [ !Select [9, !Ref PrivateTgwDestinationIps], "None"]]
+  
+  TgwDestinationAdditionalIps0Exist: !Not [!Equals [ !Select [0, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps1Exist: !Not [!Equals [ !Select [1, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps2Exist: !Not [!Equals [ !Select [2, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps3Exist: !Not [!Equals [ !Select [3, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps4Exist: !Not [!Equals [ !Select [4, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps5Exist: !Not [!Equals [ !Select [5, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps6Exist: !Not [!Equals [ !Select [6, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps7Exist: !Not [!Equals [ !Select [7, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps8Exist: !Not [!Equals [ !Select [8, !Ref AdditionalTgwDestinationIps], "None"]]
+  TgwDestinationAdditionalIps9Exist: !Not [!Equals [ !Select [9, !Ref AdditionalTgwDestinationIps], "None"]]
+  
+  
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Condition: IsVPCRequired    
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Vpc'
+        - Key: ApplicationRole
+          Value: Net-Vpc
+  VPCCidrBlock:
+    Type: 'AWS::EC2::VPCCidrBlock'
+    Condition: IsExtraVpcCidrRequired
+    Properties:
+      CidrBlock: !Ref VpcNewCidrBlock
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Condition: UseExitingIgw
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Igw'
+        - Key: ApplicationRole
+          Value: Net-Igw
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Condition: UseExitingIgw
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+    DependsOn: InternetGateway
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs0Exist    
+    Properties:
+      AvailabilityZone: !Select [0, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 0, !Ref PublicSubnetCIDRs]]]
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId      
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 0, !Ref PublicSubnetCIDRs]]], !Select [0, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-1
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs1Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [1, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 1, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 1, !Ref PublicSubnetCIDRs]]], !Select [1, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-2
+  PublicSubnet3:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs2Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [2, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 2, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 2, !Ref PublicSubnetCIDRs]]], !Select [2, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-3
+  PublicSubnet4:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs3Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [3, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 3, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 3, !Ref PublicSubnetCIDRs]]], !Select [3, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-4
+  PublicSubnet5:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs4Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [4, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 4, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 4, !Ref PublicSubnetCIDRs]]], !Select [4, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-5
+  PublicSubnet6:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs5Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [5, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 5, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 5, !Ref PublicSubnetCIDRs]]], !Select [5, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-6
+  PublicSubnet7:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs6Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [6, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 6, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 6, !Ref PublicSubnetCIDRs]]], !Select [6, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-7
+  PublicSubnet8:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs7Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [7, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 7, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 7, !Ref PublicSubnetCIDRs]]], !Select [7, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-8
+  PublicSubnet9:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs8Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [8, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 8, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 8, !Ref PublicSubnetCIDRs]]], !Select [8, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-9
+  PublicSubnet10:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PublicSubnetCIDRs9Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [9, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 9, !Ref PublicSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 9, !Ref PublicSubnetCIDRs]]], !Select [9, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pub-Sub-9
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs0Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [0, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 0, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 0, !Ref PrivateSubnetCIDRs]]], !Select [0, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-1
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs1Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [1, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 1, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 1, !Ref PrivateSubnetCIDRs]]], !Select [1, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-2
+  PrivateSubnet3:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs2Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [2, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 2, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 2, !Ref PrivateSubnetCIDRs]]], !Select [2, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-3
+  PrivateSubnet4:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs3Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [3, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 3, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 3, !Ref PrivateSubnetCIDRs]]], !Select [3, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-4  
+  PrivateSubnet5:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs4Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [4, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 4, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 4, !Ref PrivateSubnetCIDRs]]], !Select [4, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-5 
+  PrivateSubnet6:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs5Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [5, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 5, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 5, !Ref PrivateSubnetCIDRs]]], !Select [5, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-6
+  PrivateSubnet7:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs6Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [6, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 6, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 6, !Ref PrivateSubnetCIDRs]]], !Select [6, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-7
+  PrivateSubnet8:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs7Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [7, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 7, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 7, !Ref PrivateSubnetCIDRs]]], !Select [7, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-8
+  PrivateSubnet9:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs8Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [8, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 8, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 8, !Ref PrivateSubnetCIDRs]]], !Select [8, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-9
+  PrivateSubnet10:
+    Type: 'AWS::EC2::Subnet'
+    Condition: PrivateSubnetCIDRs9Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [9, !Ref SubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 9, !Ref PrivateSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 9, !Ref PrivateSubnetCIDRs]]], !Select [9, !Ref SubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: Net-Pvt-Sub-10
+  AdditionalSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs0Exist    
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [0, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]], !Select [0, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,1]]
+          
+  AdditionalSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs1Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [1, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 1, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 1, !Ref AdditionalSubnetCIDRs]]], !Select [1, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,2]]
+  AdditionalSubnet3:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs2Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [2, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 2, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 2, !Ref AdditionalSubnetCIDRs]]], !Select [2, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,3]]
+  AdditionalSubnet4:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs3Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [3, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 3, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 3, !Ref AdditionalSubnetCIDRs]]], !Select [3, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,4]]
+  AdditionalSubnet5:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs4Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [4, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 4, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 4, !Ref AdditionalSubnetCIDRs]]], !Select [4, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,5]]
+  AdditionalSubnet6:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs5Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [5, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 5, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 5, !Ref AdditionalSubnetCIDRs]]], !Select [5, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,6]]
+  AdditionalSubnet7:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs6Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [6, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 6, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 6, !Ref AdditionalSubnetCIDRs]]], !Select [6, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,7]]
+  AdditionalSubnet8:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs7Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [7, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 7, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 7, !Ref AdditionalSubnetCIDRs]]], !Select [7, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,8]]
+  AdditionalSubnet9:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs8Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [8, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 8, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 8, !Ref AdditionalSubnetCIDRs]]], !Select [8, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,9]]
+  AdditionalSubnet10:
+    Type: 'AWS::EC2::Subnet'
+    Condition: AdditionalSubnetCIDRs9Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      AvailabilityZone: !Select [9, !Ref AdditionalSubnetAZs]
+      CidrBlock: !Select [ 0, !Split [ ":", !Select [ 9, !Ref AdditionalSubnetCIDRs]]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 9, !Ref AdditionalSubnetCIDRs]]], !Select [9, !Ref AdditionalSubnetAZs], Sub ]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Sub,10]]
+  NatGatewayEIP:
+    Type: 'AWS::EC2::EIP'
+    Condition: UseExistingNat 
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Nat-Eip'
+        - Key: ApplicationRole
+          Value: Net-Nat-Eip
+  NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: UseExistingNat     
+    Properties:
+      AllocationId: !GetAtt 
+        - NatGatewayEIP
+        - AllocationId
+      SubnetId: 
+        !If
+        - PublicSubnetCIDRs0Exist
+        - !Ref PublicSubnet1
+        - !Ref ExistingPublicSubnetId
+      
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Nat'
+        - Key: ApplicationRole
+          Value: Net-Nat
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: PublicSubnetCIDRs0Exist
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Pub-Rtb'
+        - Key: ApplicationRole
+          Value: Net-Pub-Rtb
+  PublicRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: IsDefaultIgwRouteRuleRequired
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        !If
+        - UseExitingIgw
+        - !Ref InternetGateway 
+        - !Ref ExistingIGWId
+  PublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs0Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs1Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  PublicSubnet3RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs2Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+  PublicSubnet4RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs3Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet4
+  PublicSubnet5RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs4Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet5
+  PublicSubnet6RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs5Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet6
+  PublicSubnet7RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs6Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet7
+  PublicSubnet8RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs7Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet8
+  PublicSubnet9RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs8Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet9
+  PublicSubnet10RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PublicSubnetCIDRs9Exist
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet10
+  PrivateRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: IsDefaultNatRouteRuleRequired     
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        !If
+        - UseExistingNat
+        - !Ref NatGateway 
+        - !Ref ExistingNATId
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: PrivateSubnetCIDRs0Exist      
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Pvt-Rtb'
+        - Key: ApplicationRole
+          Value: Net-Pvt-Rtb
+      
+  Private1SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps0Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 0, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  PrivateSubnet2RouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps1Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 1, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private3SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps2Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 2, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private4SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps3Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 3, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private5SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps4Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 4, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private6SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps5Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 5, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId 
+  Private7SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps6Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 6, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId     
+  Private8SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps7Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 7, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private9SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps8Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 8, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Private10SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationPrivateIps9Exist      
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !Select [ 9, !Ref PrivateTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId         
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs0Exist    
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs1Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+  PrivateSubnet3RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs2Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet3
+  PrivateSubnet4RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs3Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet4 
+  PrivateSubnet5RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs4Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet5
+  PrivateSubnet6RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs5Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet6
+  PrivateSubnet7RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs6Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet7
+  PrivateSubnet8RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs7Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet8
+  PrivateSubnet9RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs8Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet9
+  PrivateSubnet10RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: PrivateSubnetCIDRs9Exist
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet10
+  AdditionalRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: IsDefaultNatRouteRuleRequired     
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        !If
+        - UseExistingNat
+        - !Ref NatGateway 
+        - !Ref ExistingNATId
+  AdditionalRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: AdditionalSubnetCIDRs0Exist      
+    Properties:
+      VpcId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId
+      Tags:
+        - Key: Name
+          Value: !Join [ "-" ,[ !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}',!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Rtb]]
+        - Key: ApplicationRole
+          Value: !Join [ "-" ,[ Net,!Select [ 1, !Split [ ":", !Select [ 0, !Ref AdditionalSubnetCIDRs]]],Rtb]]
+      
+  Additional1SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps0Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 0, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  AdditionalSubnet2RouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps1Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 1, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional3SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps2Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 2, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional4SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps3Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 3, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional5SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps4Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 4, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional6SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps5Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 5, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId 
+  Additional7SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps6Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 6, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId     
+  Additional8SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps7Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 7, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional9SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps8Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 8, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId
+  Additional10SubnetRouteRule:
+    Type: 'AWS::EC2::Route'
+    Condition: TgwDestinationAdditionalIps9Exist      
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      DestinationCidrBlock: !Select [ 9, !Ref AdditionalTgwDestinationIps]
+      TransitGatewayId: !Ref TransitGatewayId         
+  AdditionalSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs0Exist    
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet1
+  AdditionalSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs1Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet2
+  AdditionalSubnet3RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs2Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet3
+  AdditionalSubnet4RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs3Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet4 
+  AdditionalSubnet5RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs4Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet5
+  AdditionalSubnet6RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs5Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet6
+  AdditionalSubnet7RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs6Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet7
+  AdditionalSubnet8RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs7Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet8
+  AdditionalSubnet9RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs8Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet9
+  AdditionalSubnet10RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: AdditionalSubnetCIDRs9Exist
+    Properties:
+      RouteTableId: !Ref AdditionalRouteTable
+      SubnetId: !Ref AdditionalSubnet10
+  FlowLogs:
+    Type: 'AWS::EC2::FlowLog'
+    Condition: IsFlowLogsRequired    
+    Properties:
+      ResourceType: VPC
+      ResourceId: 
+        !If
+        - IsVPCRequired
+        - !Ref VPC 
+        - !Ref ExistingVPCId     
+      TrafficType: ALL
+      LogDestinationType: s3
+      LogDestination: !Sub 'arn:aws:s3:::${VpcFlowLogsS3BucketName}'
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${Purpose}-Vpc-FlowLogs'
+      - Key: ApplicationRole
+        Value: Net-FlowLogs
+Outputs:
+    Environment: 
+       Value: !Ref EnvironmentType
+    VPCID:
+       Value: !If [IsVPCRequired, !Ref VPC, !Ref ExistingVPCId]
+    DefaultNaclID:
+      Value: !If [IsVPCRequired, !GetAtt VPC.DefaultNetworkAcl, "None"]
+    PublicSubnetIds:
+       Value: !Join [",",[!If [PublicSubnetCIDRs0Exist, !Ref PublicSubnet1, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs1Exist, !Ref PublicSubnet2, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs2Exist, !Ref PublicSubnet3, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs3Exist, !Ref PublicSubnet4, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs4Exist, !Ref PublicSubnet5, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs5Exist, !Ref PublicSubnet6, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs6Exist, !Ref PublicSubnet7, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs7Exist, !Ref PublicSubnet8, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs8Exist, !Ref PublicSubnet9, !Ref "AWS::NoValue"],!If [PublicSubnetCIDRs9Exist, !Ref PublicSubnet10, !Ref "AWS::NoValue"] ] ]
+    PrivateSubnetIds:
+      Value: !Join [",",[!If [PrivateSubnetCIDRs0Exist, !Ref PrivateSubnet1, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs1Exist, !Ref PrivateSubnet2, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs2Exist, !Ref PrivateSubnet3, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs3Exist, !Ref PrivateSubnet4, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs4Exist, !Ref PrivateSubnet5, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs5Exist, !Ref PrivateSubnet6, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs6Exist, !Ref PrivateSubnet7, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs7Exist, !Ref PrivateSubnet8, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs8Exist, !Ref PrivateSubnet9, !Ref "AWS::NoValue"],!If [PrivateSubnetCIDRs9Exist, !Ref PrivateSubnet10, !Ref "AWS::NoValue"] ] ]
+    AdditionalSubnetIds:
+      Value: !Join [",",[!If [AdditionalSubnetCIDRs0Exist, !Ref AdditionalSubnet1, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs1Exist, !Ref AdditionalSubnet2, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs2Exist, !Ref AdditionalSubnet3, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs3Exist, !Ref AdditionalSubnet4, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs4Exist, !Ref AdditionalSubnet5, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs5Exist, !Ref AdditionalSubnet6, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs6Exist, !Ref AdditionalSubnet7, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs7Exist, !Ref AdditionalSubnet8, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs8Exist, !Ref AdditionalSubnet9, !Ref "AWS::NoValue"],!If [AdditionalSubnetCIDRs9Exist, !Ref AdditionalSubnet10, !Ref "AWS::NoValue"] ] ]
+    PublicSubnet1Id:
+      Value: !If [PublicSubnetCIDRs0Exist, !Ref PublicSubnet1, "None"]
+    PublicSubnet2Id:
+      Value: !If [PublicSubnetCIDRs1Exist, !Ref PublicSubnet2, "None"]
+    PublicSubnet3Id:
+      Value: !If [PublicSubnetCIDRs2Exist, !Ref PublicSubnet3, "None"]
+    PublicSubnet4Id:
+      Value: !If [PublicSubnetCIDRs3Exist, !Ref PublicSubnet4, "None"]
+    PublicSubnet5Id:
+      Value: !If [PublicSubnetCIDRs4Exist, !Ref PublicSubnet5, "None"]
+    PublicSubnet6Id:
+      Value: !If [PublicSubnetCIDRs5Exist, !Ref PublicSubnet6, "None"]
+    PublicSubnet7Id:
+      Value: !If [PublicSubnetCIDRs6Exist, !Ref PublicSubnet7, "None"]
+    PublicSubnet8Id:
+      Value: !If [PublicSubnetCIDRs7Exist, !Ref PublicSubnet8, "None"]
+    PublicSubnet9Id:
+      Value: !If [PublicSubnetCIDRs8Exist, !Ref PublicSubnet9, "None"]
+    PublicSubnet10Id:
+      Value: !If [PublicSubnetCIDRs9Exist, !Ref PublicSubnet10, "None"]
+    PrivateSubnet1Id:
+      Value: !If [PrivateSubnetCIDRs0Exist, !Ref PrivateSubnet1, "None"]
+    PrivateSubnet2Id:
+      Value: !If [PrivateSubnetCIDRs1Exist, !Ref PrivateSubnet2, "None"]
+    PrivateSubnet3Id:
+      Value: !If [PrivateSubnetCIDRs2Exist, !Ref PrivateSubnet3, "None"]
+    PrivateSubnet4Id:
+      Value: !If [PrivateSubnetCIDRs3Exist, !Ref PrivateSubnet4, "None"]
+    PrivateSubnet5Id:
+      Value: !If [PrivateSubnetCIDRs4Exist, !Ref PrivateSubnet5, "None"]
+    PrivateSubnet6Id:
+      Value: !If [PrivateSubnetCIDRs5Exist, !Ref PrivateSubnet6, "None"]
+    PrivateSubnet7Id:
+      Value: !If [PrivateSubnetCIDRs6Exist, !Ref PrivateSubnet7, "None"]
+    PrivateSubnet8Id:
+      Value: !If [PrivateSubnetCIDRs7Exist, !Ref PrivateSubnet8, "None"]
+    PrivateSubnet9Id:
+      Value: !If [PrivateSubnetCIDRs8Exist, !Ref PrivateSubnet9, "None"]
+    PrivateSubnet10Id:
+      Value: !If [PrivateSubnetCIDRs9Exist, !Ref PrivateSubnet10, "None"]
+    AdditionalSubnet1Id:
+      Value: !If [AdditionalSubnetCIDRs0Exist, !Ref AdditionalSubnet1, "None"]
+    AdditionalSubnet2Id:
+      Value: !If [AdditionalSubnetCIDRs1Exist, !Ref AdditionalSubnet2, "None"]
+    AdditionalSubnet3Id:
+      Value: !If [AdditionalSubnetCIDRs2Exist, !Ref AdditionalSubnet3, "None"]
+    AdditionalSubnet4Id:
+      Value: !If [AdditionalSubnetCIDRs3Exist, !Ref AdditionalSubnet4, "None"]
+    AdditionalSubnet5Id:
+      Value: !If [AdditionalSubnetCIDRs4Exist, !Ref AdditionalSubnet5, "None"]
+    AdditionalSubnet6Id:
+      Value: !If [AdditionalSubnetCIDRs5Exist, !Ref AdditionalSubnet6, "None"]
+    AdditionalSubnet7Id:
+      Value: !If [AdditionalSubnetCIDRs6Exist, !Ref AdditionalSubnet7, "None"]
+    AdditionalSubnet8Id:
+      Value: !If [AdditionalSubnetCIDRs7Exist, !Ref AdditionalSubnet8, "None"]
+    AdditionalSubnet9Id:
+      Value: !If [AdditionalSubnetCIDRs8Exist, !Ref AdditionalSubnet9, "None"]
+    AdditionalSubnet10Id:
+      Value: !If [AdditionalSubnetCIDRs9Exist, !Ref AdditionalSubnet10, "None"]
+    NatGatewayId:
+      Value: !If [UseExistingNat, !Ref NatGateway, "None"]
+    NatEIP:
+      Value: !If [UseExistingNat, !Ref NatGatewayEIP, "None"]
+    PublicRouteTableId:
+      Value: !If [PublicSubnetCIDRs0Exist, !Ref PublicRouteTable, "None"]
+    PrivateRouteTableId:
+      Value: !If [PrivateSubnetCIDRs0Exist, !Ref PrivateRouteTable, "None"]
+    AdditionalRouteTableId:
+      Value: !If [AdditionalSubnetCIDRs0Exist, !Ref AdditionalRouteTable, "None"]
+    FlowLogID:
+      Value: !If [IsFlowLogsRequired, !Ref FlowLogs, "None"]

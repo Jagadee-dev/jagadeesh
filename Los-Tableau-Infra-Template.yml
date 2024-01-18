@@ -1,0 +1,743 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'AWS cloudformation template to create Web LoadBalancer for Tableau and Tableau Instance Version 1.0'
+Metadata:
+    AWS::CloudFormation::Interface:
+      ParameterGroups:
+        - Label:
+            default: "Common Parameters"
+          Parameters:
+            - EnvironmentType
+            - ResourceNamePrefix
+            - ServiceName
+        - Label:
+            default: "SecurityGroup Configurations"
+          Parameters:
+            - VpcId
+            - TableauVpcTrafficSgRequired
+            - TableauIngressRules
+            - TableauEgressRules
+        - Label:
+            default: "Instance Configurations"
+          Parameters:  
+            - AmiId
+            - InstanceType
+            - TableauInstanceDetails
+            - ReportingSubnetIpV4
+            - ReportingSubnetIds
+            - AdditionalSgIds
+            - CustomTags
+        - Label:
+            default: "S3 Configurations"
+          Parameters:
+            - TableauDataBackupBucketName
+            - S3AccessLogBucketName
+            - AlbAccessLogBucketName
+        - Label:
+            default: "LoadBalancer Configurations"
+          Parameters:
+            - PublicSubnetIds
+        - Label:
+            default: "TargetGroup Configurations"
+          Parameters:
+            - TGrpValues
+        - Label:
+            default: "Listener Configurations"
+          Parameters:
+            - AcmCertificateArn
+        - Label:
+            default: "IAM Role Configurations"
+          Parameters:
+            - InstanceRoleManagedPolicy
+        - Label:
+            default: "CDN Configurations"
+          Parameters:
+            - Aliases
+            - EnableCloudFront
+            - CloudFrontLoggingBucketName
+            - AllowedGeoLocations
+            - WebAclArn
+            - PriceClass
+Parameters:
+  EnvironmentType:
+    Type: String
+    Description: 'Name your EnvironmentType According to your need.'
+  ResourceNamePrefix:
+    Type: String
+    Description: 'Enter prefix for Resource Names'
+  ServiceName:
+    Type: String
+    Description: Specify the name of the service
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: 'Enter the VPC ID in which Tableau needs to be created.'
+  TableauVpcTrafficSgRequired:
+    Type: String
+    Description: 'Enter true to create SecurityGroup for Tableau Server & false to use existing Dynamic Security Groups[Serverless & Vpn sg] which leaves Ingress & Egress Rules undisturbed.'
+    AllowedValues: ["true", "false"]
+  TableauIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  TableauEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  AmiId:
+    Type: String
+    Description: 'Provide an AMI ID for EC2 instance to spin Tableau Server'
+  InstanceType:
+    Type: String
+    Description: 'Specify the instance type as needed for Tableau Server'
+  TableauInstanceDetails:
+    Type: CommaDelimitedList
+    Description: 'Enter the Details for TableauInstance in following format Monitoring,EBS Volume Size,EBS Volume Type for Tableau Server [eg- true,10,gp3]'
+  ReportingSubnetIpV4:
+    Type: String
+    Description: 'Enter the Reporting Subnets Private IP Address for Tableau Server.' 
+  ReportingSubnetIds:
+    Type: AWS::EC2::Subnet::Id
+    Description: 'Select Subnets for Tableau Server' 
+  AdditionalSgIds:
+    Type: CommaDelimitedList
+    Description: 'Enter only 4 AdditionalSgIds if TableauVpcTrafficSgRequired is set to true else provide 5.'
+    Default: "None,None,None,None,None"
+  CustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to instance created during launch.'
+    Default: "None,None,None,None,None"
+  TableauDataBackupBucketName:
+    Type: CommaDelimitedList
+    Description: 'Enter the Bucket values in this format BucketName, BucketStatus, ExpirationInDays, NoncurrentVersionExpirationInDays, Versioning [eg MyBucketName,CREATE,180,90,Enabled]'
+  S3AccessLogBucketName:
+    Type: String
+    Description: (Optional)'Enter the name of existing S3 Bucket to store access logs & None if storing of logs is not required.'
+  AlbAccessLogBucketName:
+    Type: String
+    Description: (Optional) 'Enter the name of S3 Bucket to store Tableau LoadBalancer logs.'
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Select the Public Subnets for Tableau LoadBalancer.'
+  TGrpValues:
+    Type: CommaDelimitedList
+    Description: 'Enter the Port Number & Protocol for the TargetGroup health check in the format - Port,Protocol,HealthCheckIntervalSeconds,UnhealthyThresholdCount,HealthCheckTimeoutSeconds,HealthCheckPath,HttpCode,ProtocolVersion'
+    Default: '443,HTTPS,60,10,10,/,200,HTTP2'
+  AcmCertificateArn:
+    Type: String
+    Description: 'Enter the Certificate Arn to accept Https traffic for LoadBalancer.'
+  InstanceRoleManagedPolicy:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter where the ManagedPolicy for instance role is Provided'
+  Aliases:
+    Type: CommaDelimitedList
+    Description: specify alternative domain name
+  EnableCloudFront:
+    Type: String
+    Description: Used to enable or disable the selected distribution.
+    Default: 'true'
+    AllowedValues: ["true", "false"]
+  CloudFrontLoggingBucketName: 
+    Type: String 
+    Description: (Optional) Enter the name of the S3 Bucket, where cloudfront logs will be stored..
+  AllowedGeoLocations:
+    Type: CommaDelimitedList
+    Default: 'IN,US,SG,CA'
+    Description: A complex type that contains a Location element for each country in which you want CloudFront either to distribute your content whitelist.
+  WebAclArn:
+    Type: String
+    Description: Enter the Id of WAF Web acl v2 ARN for cloudfront.
+  PriceClass:
+    Type: String
+    Description: Select the price class for the Distribution. 100 --> US, Canada and Europe. 200 --> US, Canada, Europe, Asia and Africa. All--> All Edge Locations
+    AllowedValues: ["PriceClass_100", "PriceClass_200", "PriceClass_All"]
+Conditions:
+  IsLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName, '']]
+  ElbAccessLogEnabled: !Equals [ !Ref AlbAccessLogBucketName, '']
+  IsNewSgRequired: !Equals [!Ref TableauVpcTrafficSgRequired, true]
+  IsNewBucketRequired: !Equals [ CREATE, !Select [1, !Ref TableauDataBackupBucketName]]
+  IsCloudFrontLoggingEnabled: !Not [!Equals ['', !Ref CloudFrontLoggingBucketName]]
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref TableauIngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ]]], "sg" ]
+  Egress0Exist: !Equals [ !Select [ 0, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref TableauEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ]]], "sg" ]
+  CustomTag0Exist: !Equals [ !Select [0, !Ref CustomTags], "None"]
+  CustomTag1Exist: !Equals [ !Select [1, !Ref CustomTags], "None"]
+  CustomTag2Exist: !Equals [ !Select [2, !Ref CustomTags], "None"]
+  CustomTag3Exist: !Equals [ !Select [3, !Ref CustomTags], "None"]
+  CustomTag4Exist: !Equals [ !Select [4, !Ref CustomTags], "None"]
+  SGValue01: !Not [!Equals [!Select [0, !Ref AdditionalSgIds], "None"]]
+  SGValue02: !Not [!Equals [!Select [1, !Ref AdditionalSgIds], "None"]]
+  SGValue03: !Not [!Equals [!Select [2, !Ref AdditionalSgIds], "None"]]
+  SGValue04: !Not [!Equals [!Select [3, !Ref AdditionalSgIds], "None"]]
+  SGValue05: !Not [!Equals [!Select [4, !Ref AdditionalSgIds], "None"]]
+Resources:
+  TableauLoadBalancerSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for Tableau LoadBalancer.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Alb-SGrp'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: 
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        DestinationSecurityGroupId: !GetAtt TableauInstanceSg.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Alb-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-Alb-SGrp'
+  TableauInstanceSg:
+    Type: AWS::EC2::SecurityGroup
+    Condition: IsNewSgRequired
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for Tableau Instance.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Srvr-SGrp'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauIngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref TableauEgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref TableauEgressRules ] ] ] ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Srvr-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-Srvr-SGrp'
+  TableauInstanceSgInboundRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: 'Inbound traffic from Tableau ALB'
+      SourceSecurityGroupId: !GetAtt TableauLoadBalancerSg.GroupId
+      GroupId: !GetAtt TableauInstanceSg.GroupId
+  TableauInstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      Monitoring: !Select [0, !Ref TableauInstanceDetails]
+      IamInstanceProfile: !Ref TableauInstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeSize: !Select [1, !Ref TableauInstanceDetails]
+            Encrypted: true
+            VolumeType: !Select [2, !Ref TableauInstanceDetails]
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "false"
+          PrivateIpAddress: !Ref ReportingSubnetIpV4
+          DeviceIndex: '0'
+          SubnetId: !Ref ReportingSubnetIds
+          GroupSet:
+            - !If [IsNewSgRequired, !GetAtt TableauInstanceSg.GroupId, !Ref "AWS::NoValue"]
+            - !If
+              - SGValue01
+              - !Select [0, !Ref AdditionalSgIds]
+              - !Ref "AWS::NoValue"
+            - !If
+              - SGValue02
+              - !Select [1, !Ref AdditionalSgIds]
+              - !Ref "AWS::NoValue"
+            - !If
+              - SGValue03
+              - !Select [2, !Ref AdditionalSgIds]
+              - !Ref "AWS::NoValue"
+            - !If
+              - SGValue04
+              - !Select [3, !Ref AdditionalSgIds]
+              - !Ref "AWS::NoValue"
+            - !If
+              - SGValue05
+              - !Select [4, !Ref AdditionalSgIds]
+              - !Ref "AWS::NoValue"
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Srvr'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-Srvr'
+        - !If 
+          - CustomTag0Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTag1Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTag2Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTag3Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref CustomTags ] ] ]
+        - !If 
+          - CustomTag4Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref CustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref CustomTags ] ] ]
+  TableauDataBackupBucket:
+    Type: 'AWS::S3::Bucket'
+    Condition: IsNewBucketRequired
+    Properties:
+      BucketName: !Select [0, !Ref TableauDataBackupBucketName]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Select [0, !Ref TableauDataBackupBucketName]
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [2, !Ref TableauDataBackupBucketName]
+            NoncurrentVersionExpirationInDays: !Select [3, !Ref TableauDataBackupBucketName]
+            Status: Enabled
+            Id: !Sub 'S3-Object-Deletion-Rule'
+      VersioningConfiguration:
+        Status:  !Select [4, !Ref TableauDataBackupBucketName]
+      Tags:
+        - Key: Name
+          Value: !Select [0, !Ref TableauDataBackupBucketName]
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Backup-Bkt'
+  TableauBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: IsNewBucketRequired
+    Properties:
+      Bucket: !Select [0, !Ref TableauDataBackupBucketName]
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [0, !Ref TableauDataBackupBucketName]
+                  - /*
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Select [0, !Ref TableauDataBackupBucketName]
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+  TableauALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-ALB'
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups: 
+      - !GetAtt TableauLoadBalancerSg.GroupId
+      LoadBalancerAttributes:
+        - !If 
+          - ElbAccessLogEnabled
+          - Key: access_logs.s3.enabled
+            Value: false
+          - Key: access_logs.s3.enabled
+            Value: true
+        - !If 
+          - ElbAccessLogEnabled
+          - !Ref "AWS::NoValue"
+          - Key: access_logs.s3.bucket
+            Value: !Ref AlbAccessLogBucketName
+        - Key: deletion_protection.enabled
+          Value: true
+        - Key: routing.http.drop_invalid_header_fields.enabled
+          Value: true
+      Subnets: !Ref PublicSubnetIds
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-ALB'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-ALB'
+  TableauTargetGroup: 
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: instance
+      Name: !Sub '${EnvironmentType}-Tableau-TGrp'
+      Targets:
+        - Id: !Ref TableauInstance
+      Port: !Select [0, !Ref TGrpValues]
+      Protocol: !Select [1, !Ref TGrpValues]
+      HealthCheckIntervalSeconds: !Select [2, !Ref TGrpValues]
+      UnhealthyThresholdCount: !Select [3, !Ref TGrpValues]
+      HealthCheckTimeoutSeconds: !Select [4, !Ref TGrpValues]
+      HealthCheckPath: !Select [5, !Ref TGrpValues]
+      Matcher:
+        HttpCode: !Select [6, !Ref TGrpValues]
+      VpcId: !Ref 'VpcId' 
+      ProtocolVersion: !Select [7, !Ref TGrpValues]
+      Tags: 
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-TGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-TGrp'
+  TableauListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref AcmCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TableauTargetGroup
+      LoadBalancerArn: !Ref TableauALB
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+  TableauHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref TableauALB
+      DefaultActions: 
+        - Type: redirect
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: "443"
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      Port: 80
+      Protocol: "HTTP"
+  TableauInstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Srvr-Role'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - !Ref InstanceRoleManagedPolicy       
+      Tags: 
+        - 
+          Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-Srvr-Role'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Tableau-Srvr-Role'
+      Policies:
+      - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Secret-Plcy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              Resource: 
+              - !Sub 'arn:aws:s3:::${TableauDataBackupBucket}*'
+            - Effect: Allow
+              Action:
+              - 'secretsmanager:GetSecretValue'
+              Resource: 
+              - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Tableau-*'
+              - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ResourceNamePrefix}-${EnvironmentType}-Tableau*'
+  TableauInstanceProfile:
+    Type : AWS::IAM::InstanceProfile
+    Properties: 
+      Path : /
+      Roles : 
+        - !Ref TableauInstanceRole
+  ALBDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      Tags: 
+       -  Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CFrnt'
+       -  Key: ApplicationRole
+          Value: !Sub '${ServiceName}-CFrnt'
+      DistributionConfig:
+        Comment: A Distribution which is integrated with Tableau Server.
+        Aliases: !Ref Aliases          
+        Origins:
+          - DomainName: !GetAtt TableauALB.DNSName
+            Id: !Ref TableauALB
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        Restrictions:
+          GeoRestriction: 
+            Locations: !Ref AllowedGeoLocations              
+            RestrictionType: whitelist
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: '/'
+        Logging:
+          !If
+          - IsCloudFrontLoggingEnabled
+          - Bucket: !Join [ "", [ !Ref CloudFrontLoggingBucketName, ".s3.amazonaws.com" ] ]
+            Prefix: !Sub '${AWS::AccountId}/${EnvironmentType}/${ServiceName}/'
+          - !Ref "AWS::NoValue"
+        DefaultCacheBehavior:
+          ForwardedValues:
+            QueryString: 'false'
+          TargetOriginId: !Ref TableauALB
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          SmoothStreaming: false
+        Enabled: !Ref EnableCloudFront
+        DefaultRootObject: /
+        HttpVersion: 'http2and3'
+        WebACLId: !Ref WebAclArn
+        PriceClass: !Ref PriceClass
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+Outputs:
+  TargetPort:
+    Value: !Select [0, !Ref TGrpValues]
+  TableauDataBackupBucketName:
+    Value: !Ref TableauDataBackupBucket
+  TableauDataBackupBucketArn:
+    Value: !GetAtt TableauDataBackupBucket.Arn
+  TableauLBDNS:
+    Value: !GetAtt TableauALB.DNSName
+  TableauLBFullName:
+    Value: !Ref TableauALB
+  TableauServerSgID:
+    Value: !GetAtt TableauInstanceSg.GroupId
+  TableauInstanceId:
+    Value: !Ref TableauInstance

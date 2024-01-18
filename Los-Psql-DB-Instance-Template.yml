@@ -1,0 +1,526 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create RDS in Single & Multiple AZs.This template is excecuted as part of Master Application.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "SecurityGroup Configurations"
+        Parameters:
+          - VpcId
+          - AdditionalSgIds
+          - RDSVpcTrafficSgRequired
+          - RDSIngressRules
+          - RDSEgressRules
+      - Label:
+          default: "DBSubnetGroup Configurations"
+        Parameters:
+          - DbSubnetIds
+          - DBSubnetGroupName
+      - Label:
+          default: "DBParameterGroup Configurations"
+        Parameters:
+          - ParameterGroupFamily
+          - DBParameterGroupName
+      - Label:
+          default: "RDSInstance Configurations"
+        Parameters:
+          - DBname
+          - DBInstanceParameters
+          - DBInstanceStorage
+          - DBInstanceConfiguration
+          - PreferredMaintenanceWindow
+          - MonitoringInterval
+          - RdsMasterSecretName
+          - BackupRetentionPeriod
+          - EnableCloudwatchLogsexports
+          - AvailabilityZone
+          - RdsCustomTags
+      - Label:
+          default: "RDS EventSubscription Configurations"
+        Parameters:
+          - NewEventSubscriptionRequired
+          - SourceType
+          - EventCategories
+          - RdsEventNotification
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Name your EnvironmentType According to your need.
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: A list of two subnet IDs in your environment VPC.
+  DBname:
+    Type: String
+    Description: Enter a DB name for RDS & it must begin with letter and can contain only alphanumeric characters.
+  DBInstanceParameters:
+    Type: CommaDelimitedList
+    Description: Enter true to create DeletionProtect,PubliclyAccessible,CopyTagsToSnapshot,DeployMultiAZ & false to avoid creation in this format [true,true,true,true].
+    AllowedValues: ["true", "false"]
+  DBInstanceStorage:
+    Type: CommaDelimitedList
+    Description: Enter the rds AllocatedStorage, MaxAllocatedStorage in this format [200,1000].
+    Default: "None,None"
+  DBInstanceConfiguration:
+    Type: CommaDelimitedList
+    Description: Enter the values for the Rds configuration DBInstanceClass, Engine, Port, StorageType, Iops in this format [db.r4.large,postgres,3306,io1,1000].
+    Default: "None,None,None,None,None"
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Enter the weekly time range during which system maintenance can occur in Universal Coordinated Time (UTC).    
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Enter the ID of the Amazon VPC used for environment.   
+  MonitoringInterval:
+    Type: String
+    Description: Enter the interval in seconds between points when Enhanced Monitoring metrics are collected for the DB instance.
+  RDSVpcTrafficSgRequired:
+    Type: String
+    Description: 'Enter true to create SecurityGroup for Rds dbinstance & false to use existing Dynamic Security Groups[Serverless & Vpn sg].'
+    AllowedValues: ["true", "false"]
+  NewEventSubscriptionRequired:
+    Type: String
+    Description: 'Enter true to create EventSubscription for Rds dbinstance & false to use existing value.'
+    AllowedValues: ["true", "false"]
+  RDSIngressRules:
+    Type: CommaDelimitedList
+    Description: '(Conditional) Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  RDSEgressRules:
+    Type: CommaDelimitedList
+    Description: '(Conditional) Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  AdditionalSgIds:
+    Type: CommaDelimitedList
+    Description: Enter 4 Existing AdditionalSgIds if NewSGRequired is set to false & provide 3 if NewSGRequired is set to true.
+    Default: "None,None,None,None"
+  RdsMasterSecretName:
+    Type: String
+    Description: Enter the name of the secret in the secret manager.
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Enter the number of days for retaining automated backups.
+  EnableCloudwatchLogsexports:
+    Type: String
+    Description: Enter the log types that need to be enabled for exporting to CloudWatch Logs.
+    AllowedValues: ["postgresql", "upgrade"]
+  ParameterGroupFamily:
+    Type: String
+    Description: Enter the parameter group family for the database engine eg- postgres11.
+  SourceType:
+    Type: String
+    Description: Enter the type of source that is generating the events eg- db-instance.
+  ServiceName:
+    Type: String
+    Description: Enter the name of the service for which the resources are being created.
+  EventCategories:
+    Type: String
+    AllowedValues: ["creation", "deletion", "modification"]
+    Description: Select a event category for RDS event subscription.
+  AvailabilityZone:
+    Type: String
+    Description: Enter the preferred AZ where the database will be created if MultiAZ is set to false & provide "None" if MultiAZ is set to true (eg). [us-east-1a].
+  RdsCustomTags:
+    Type: CommaDelimitedList
+    Description: 'Specify the tags in following format "Key1:Value1..,." The specified tags are applied to all applied resources that are created during launch.'
+    Default: 'None,None,None,None,None'
+  DBParameterGroupName:
+    Type: String
+    Description: Enter a name for DB parameter group in lowercase.
+  RdsEventNotification:
+    Type: String
+    Description: (Optional) Enter a name for SNS Topic if NewEventSubscriptionRequired is set to True & specify an Existing Sns topic if NewEventSubscriptionRequired is set to false.
+  DBSubnetGroupName:
+    Type: String
+    Description: Enter a name for DB subnet group in lowercase.
+Conditions:
+  SGValue01: !Equals [!Ref RDSVpcTrafficSgRequired, true]
+  SGValue02: !Not [!Equals [!Select [0, !Ref AdditionalSgIds], "None"]]
+  SGValue03: !Not [!Equals [!Select [1, !Ref AdditionalSgIds], "None"]]
+  SGValue04: !Not [!Equals [!Select [2, !Ref AdditionalSgIds], "None"]]
+  SGValue05: !Not [!Equals [!Select [3, !Ref AdditionalSgIds], "None"]]
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref RDSIngressRules ], "N:N:N:N" ]
+  IngressFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ]]], "sg" ]
+  Egress0Exist: !Equals [ !Select [ 0, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref RDSEgressRules ], "N:N:N:N" ]
+  EgresssgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ]]], "sg" ]
+  IsNewEventSubscriptionRequired: !Equals [!Ref NewEventSubscriptionRequired, true]
+  CustomTag0Exist: !Equals [ !Select [0, !Ref RdsCustomTags], "None"]
+  CustomTag1Exist: !Equals [ !Select [1, !Ref RdsCustomTags], "None"]
+  CustomTag2Exist: !Equals [ !Select [2, !Ref RdsCustomTags], "None"]
+  CustomTag3Exist: !Equals [ !Select [3, !Ref RdsCustomTags], "None"]
+  CustomTag4Exist: !Equals [ !Select [4, !Ref RdsCustomTags], "None"]
+Resources:
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: SGValue01
+    Properties:
+      GroupDescription: This SG is configured to allow/deny inbound/outbound traffic.
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RdsSGrp'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - !If
+          - Ingress0Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress1Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress2Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress3Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress4Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress5Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress6Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress7Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress8Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSIngressRules ] ] ] ]
+        - !If
+          - Ingress9Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ] 
+            SourceSecurityGroupId: !If [IngressFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [IngressFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSIngressRules ] ] ] ]
+      SecurityGroupEgress:
+        - !If
+          - Egress0Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress1Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress2Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress3Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress4Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress5Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress6Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress7Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress8Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref RDSEgressRules ] ] ] ]
+        - !If
+          - Egress9Exist
+          - !Ref "AWS::NoValue"
+          - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ]
+            FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ] 
+            ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ] 
+            DestinationSecurityGroupId: !If [EgresssgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ], !Ref "AWS::NoValue" ]
+            CidrIp: !If [EgresssgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref RDSEgressRules ] ] ] ] 
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsSGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RdsSGrp'
+  RDSRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}Rds-Monitoring-Role'
+      ManagedPolicyArns: 
+        -  !Sub 'arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - monitoring.rds.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Tags:
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsMonitoringRole'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-RdsMonitoringRole'          
+  DBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: A DBSubnetGroup to be associated with RDS Instance.
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      SubnetIds: !Ref DBSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-DBSubGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Rds-DBSubGrp'
+  DBParameterGroup:
+    Type: 'AWS::RDS::DBParameterGroup'
+    Properties:
+      Description: A DBParameterGroup to be associated with RDS Instance to store database.
+      Family: !Ref ParameterGroupFamily
+      DBParameterGroupName: !Ref DBParameterGroupName
+      Parameters:
+        rds.logical_replication: '1'
+        pgaudit.log: all
+        log_statement: all
+        log_min_duration_statement: '1000'
+        pgaudit.role: rds_pgaudit
+        rds.force_ssl: 0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-DBParGrp'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Rds-DBParGrp'
+  DBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceIdentifier: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsClstr'
+      AllocatedStorage: !Select [0, !Ref DBInstanceStorage]
+      MaxAllocatedStorage: !Select [1, !Ref DBInstanceStorage]
+      DBInstanceClass: !Select [0, !Ref DBInstanceConfiguration]
+      Engine: !Select [1, !Ref DBInstanceConfiguration]
+      Port: !Select [2, !Ref DBInstanceConfiguration]
+      StorageType: !Select [3, !Ref DBInstanceConfiguration]
+      Iops: !Select [4, !Ref DBInstanceConfiguration]
+      EngineVersion: !Select [5, !Ref DBInstanceConfiguration]
+      DeletionProtection: !Select [0, !Ref DBInstanceParameters]
+      PubliclyAccessible: !Select [1, !Ref DBInstanceParameters]
+      CopyTagsToSnapshot: !Select [2, !Ref DBInstanceParameters]
+      MultiAZ: !Select [3, !Ref DBInstanceParameters]
+      MasterUsername: !Sub '{{resolve:secretsmanager:${RdsMasterSecretName}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${RdsMasterSecretName}:SecretString:password}}'
+      StorageEncrypted: 'true'
+      DBSubnetGroupName: !Ref DBSubnetGroupName
+      DBParameterGroupName: !Ref DBParameterGroupName
+      DBName: !Ref DBname
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      MonitoringInterval: !Ref MonitoringInterval
+      AvailabilityZone: !Ref AvailabilityZone
+      MonitoringRoleArn: !GetAtt RDSRole.Arn
+      EnableCloudwatchLogsExports: 
+        - !Ref EnableCloudwatchLogsexports
+      VPCSecurityGroups:
+        - !If [SGValue01, !GetAtt RDSSecurityGroup.GroupId, !Ref "AWS::NoValue"]
+        - !If
+          - SGValue02
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsInstance'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RdsInstance'
+        - !If 
+          - CustomTag0Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag1Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag2Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag3Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RdsCustomTags ] ] ]
+        - !If 
+          - CustomTag4Exist
+          - !Ref "AWS::NoValue"
+          - Key: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RdsCustomTags ] ] ] 
+            Value: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RdsCustomTags ] ] ]
+  RdsEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Condition: IsNewEventSubscriptionRequired
+    Properties: 
+      SnsTopicArn: !Ref RdsEventNotification
+      Enabled: true
+      SourceIds:
+        - !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RdsClstr'
+      SourceType: !Ref SourceType
+      EventCategories: 
+        - !Ref EventCategories
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RDSSubscription'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RDSEvent'
+Outputs:
+  SecurityGroup:
+    Description: RDSSecurityGoup Id created part of template.
+    Value: !If [SGValue01, !GetAtt RDSSecurityGroup.GroupId, !Ref "AWS::NoValue"]
+  InstanceName:
+    Description: Name of the RDS Instance created.
+    Value: !Ref DBInstance
+  InstanceEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address
+  InstancePort:
+    Value: !Select [2, !Ref DBInstanceConfiguration]

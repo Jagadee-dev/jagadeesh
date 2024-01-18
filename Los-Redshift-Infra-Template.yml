@@ -1,0 +1,570 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create Redshift Cluster along with Subnet, Parameter & SecurityGroups Version 1.0.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Conventions"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ResourceNamePrefixInSmallLetters
+          - EnvironmentTypeInSmallLetters
+      - Label:
+          default: "Network Configurations"
+        Parameters:
+          - RedshiftVpcTrafficSgRequired
+          - RedshiftIngressRules
+          - RedshiftEgressRules
+          - VpcId
+      - Label:
+          default: "SubnetGroup Configurations"
+        Parameters:
+          - DBSubnetIds
+      - Label:
+          default: "RedshiftCluster Configurations"
+        Parameters:
+          - AquaConfigurationStatus
+          - AutomatedSnapshotRetentionperiod
+          - ClusterType
+          - DatabaseName
+          - Kmskeyid
+          - EnableLogging
+          - RedshiftLoggingBucketName
+          - ManualSnapshotRetentionperiod
+          - NodeType
+          - NumberOfNodes
+          - RedshiftPortNumber
+          - PreferredMaintenanceWindow
+          - RotateEncryptionKey
+          - AdditionalSgIds
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: 'Enter prefix for Resource Names.'
+  EnvironmentType:
+    Type: String
+    Description: 'Enter the environmenttype according to need.'
+  ResourceNamePrefixInSmallLetters:
+    Type: String
+    Description: 'Enter prefix for Resources Names in lowercase.'
+  EnvironmentTypeInSmallLetters:
+    Type: String
+    Description: 'Enter the environmenttype according to need in lowercase.'
+  RedshiftVpcTrafficSgRequired:
+    Type: String
+    Description: 'Enter true to create SecurityGroup for RedshiftCluster & false to use existing Dynamic Security Groups[Serverless & Vpn sg] which leaves Ingress & Egress Rules undisturbed.'
+    AllowedValues: ["true", "false"]
+  RedshiftIngressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  RedshiftEgressRules:
+    Type: CommaDelimitedList
+    Description: 'Specify the rule information in following format "IpProtocol:FromPort:ToPort:SourceSecurityGroupId|CidrIp" (ex. 6:8080:8080:sg-04cb6722844514c11)'
+    Default: 'N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N,N:N:N:N'
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: 'The ID of the Amazon VPC used for environment.'
+  DBSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'The list of SubnetIDs in your Virtual Private Cloud (VPC).'
+  AquaConfigurationStatus:
+    Type: String
+    Description: 'Specify a status to represent how the cluster is configured to use AQUA (Advanced Query Accelerator).'
+    AllowedValues: ["auto", "disabled", "enabled"]
+  AutomatedSnapshotRetentionperiod:
+    Type: Number
+    MinValue: '0'
+    MaxValue: '35'
+    Description: 'Enter the number of days to retain automated snapshots. If the value is 0, automated snapshots are disabled'
+  ClusterType:
+    Type: String
+    Description: 'Choose the type of the cluster based on application requirement.'
+    AllowedValues: ["single-node", "multi-node"]
+  DatabaseName:
+    Type: String
+    Description: 'Provide a name for the database to be created in RedshiftCluster.'
+    AllowedPattern: '([a-z]|[0-9])+'
+  KmsKeyid:
+    Type: CommaDelimitedList
+    Description: 'Select true only when RotationEncryptionKey is false & Enter the KMS AWS Amazon Resource Name [ARN] for RedshiftCluster or Alias.'
+    Default: 'None,None'
+  RedshiftLoggingBucketName:
+    Type: String
+    Description: '(Optional) Enter a S3 BucketName to store Redshift Cluster logs'
+  ManualSnapshotRetentionperiod:
+    Type: Number
+    MinValue: '-1'
+    MaxValue: '3653'
+    Description: 'Specify number of days to retain a manual snapshot. If the value is -1, the snapshot is retained indefinitely.'
+  NodeType:
+    Type: String
+    Description: 'Choose the type of node for RedshiftCluster creation.'
+  NumberOfNodes:
+    Type: Number
+    Description: 'Specify the number of compute nodes to be in cluster. Value should be more than 1 when ClusterType is "multi-node"'
+    MinValue: 1
+    MaxValue: 100
+  RedshiftPortNumber:
+    Type: Number
+    Description: 'Enter port number for the cluster to accept incoming connections.'
+  PreferredMaintenancewindow:
+    Type: String
+    Description: 'Specify a time range (in UTC) during which automated cluster maintenance can occur.(Format: ddd:hh24:mi-ddd:hh24:mi)'
+  RotateEncryptionkey:
+    Type: String
+    Description: 'Enter true to Rotate the encryption key for a cluster only when KmsKeyid is false.'
+    AllowedValues: ["true", "false"]
+  AdditionalSgIds:
+    Type: CommaDelimitedList
+    Description: 'Enter only 4 AdditionalSgIds if RedshiftVpcTrafficSgRequired is set to true else provide 5.'
+    Default: "None,None,None,None,None"
+Conditions:
+  IsLoggingEnabled: !Not [!Equals [!Ref RedshiftLoggingBucketName, ""]]
+  IsKmsKeyRequired: !Equals [true, !Select [0, !Ref KmsKeyid]]
+  MultiNodeRequired: !Equals [ !Ref ClusterType, multi-node]
+  IsNewSgRequired: !Equals [!Ref RedshiftVpcTrafficSgRequired, true]
+  Ingress0Exist: !Equals [ !Select [ 0, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress1Exist: !Equals [ !Select [ 1, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress2Exist: !Equals [ !Select [ 2, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress3Exist: !Equals [ !Select [ 3, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress4Exist: !Equals [ !Select [ 4, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress5Exist: !Equals [ !Select [ 5, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress6Exist: !Equals [ !Select [ 6, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress7Exist: !Equals [ !Select [ 7, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress8Exist: !Equals [ !Select [ 8, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Ingress9Exist: !Equals [ !Select [ 9, !Ref RedshiftIngressRules ], "N:N:N:N" ]
+  SgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ]]], "sg" ]
+  Egress0Exist: !Equals [ !Select [ 0, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn0: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress1Exist: !Equals [ !Select [ 1, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn1: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress2Exist: !Equals [ !Select [ 2, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn2: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress3Exist: !Equals [ !Select [ 3, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn3: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress4Exist: !Equals [ !Select [ 4, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn4: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress5Exist: !Equals [ !Select [ 5, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn5: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress6Exist: !Equals [ !Select [ 6, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn6: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress7Exist: !Equals [ !Select [ 7, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn7: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress8Exist: !Equals [ !Select [ 8, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn8: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  Egress9Exist: !Equals [ !Select [ 9, !Ref RedshiftEgressRules ], "N:N:N:N" ]
+  EgressSgFoundIn9: !Equals [ !Select [ 0, !Split [ '-', !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ]]], "sg" ]
+  SGValue01: !Not [!Equals [!Select [0, !Ref AdditionalSgIds], "None"]]
+  SGValue02: !Not [!Equals [!Select [1, !Ref AdditionalSgIds], "None"]]
+  SGValue03: !Not [!Equals [!Select [2, !Ref AdditionalSgIds], "None"]]
+  SGValue04: !Not [!Equals [!Select [3, !Ref AdditionalSgIds], "None"]]
+  SGValue05: !Not [!Equals [!Select [4, !Ref AdditionalSgIds], "None"]]
+Resources:
+  RedshiftClusterSg:
+    Type: AWS::EC2::SecurityGroup
+    Condition: IsNewSgRequired
+    Properties:
+      GroupDescription: 'This is to create the Ingress and Egress rules in SecurityGroup for RedshiftCluster.'
+      GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RedshiftCluster-SGrp'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - !If
+        - Ingress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftIngressRules ] ] ] ]
+      - !If
+        - Ingress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ] 
+          SourceSecurityGroupId: !If [SgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [SgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftIngressRules ] ] ] ]
+      SecurityGroupEgress: 
+      - !If
+        - Egress0Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn0, !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn0, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 0, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress1Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn1, !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn1, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 1, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress2Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn2, !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn2, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 2, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress3Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn3, !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn3, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 3, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress4Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn4, !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn4, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 4, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress5Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn5, !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn5, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 5, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress6Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn6, !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn6, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 6, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress7Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn7, !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn7, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 7, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress8Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ]
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn8, !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn8, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 8, !Ref RedshiftEgressRules ] ] ] ]
+      - !If
+        - Egress9Exist
+        - !Ref "AWS::NoValue"
+        - IpProtocol: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ] 
+          FromPort: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ] 
+          ToPort: !Select [ 2, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ] 
+          DestinationSecurityGroupId: !If [EgressSgFoundIn9, !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ], !Ref "AWS::NoValue" ]
+          CidrIp: !If [EgressSgFoundIn9, !Ref "AWS::NoValue", !Select [ 3, !Split [ ':', !Select [ 9, !Ref RedshiftEgressRules ] ] ] ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RedshiftCluster-SGrp'
+        - Key: ApplicationRole
+          Value: !Sub 'RedshiftCluster-SGrp'
+  RedshiftClusterSubnetGroup:
+    Type: 'AWS::Redshift::ClusterSubnetGroup'
+    Properties:
+      Description: A SubnetGroup for RedshiftCluster.
+      SubnetIds: !Ref DBSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RedshiftCluster-SubGrp'
+        - Key: ApplicationRole
+          Value: 'RedshiftCluster-SubGrp'
+  RedshiftClusterParameterGroup:
+    Type: 'AWS::Redshift::ClusterParameterGroup'
+    Properties:
+      Description: A ParameterGroup for RedshiftCluster with few customizations in values.
+      ParameterGroupFamily: !Sub redshift-1.0
+      Parameters:
+        - ParameterName: enable_user_activity_logging
+          ParameterValue: true
+        - ParameterName: max_cursor_result_set_size
+          ParameterValue: 0
+        - ParameterName: require_ssl
+          ParameterValue: true
+        - ParameterName: wlm_json_configuration
+          ParameterValue: >-
+            [ { "auto_wlm": true } ]
+        #required in case of concurrency scaling
+        #add parameter to change default value for max number of concurrency scaling clusters parameter
+        - ParameterName: "max_concurrency_scaling_clusters"
+          ParameterValue: "5"
+        #Updated wlm configuration to set concurrency_scaling to auto
+        - ParameterName: "wlm_json_configuration"
+          ParameterValue: "[
+                            {
+                              \"name\":\"etl_queue\",
+                              \"user_group\":[\"etl_user\"],
+                              \"auto_wlm\":true,
+                              \"queue_type\":\"auto\",
+                              \"priority\":\"highest\"
+                            },
+                            {
+                              \"name\":\"reporting_queue\",
+                              \"user_group\":[\"%report%\"],
+                              \"user_group_wild_card\":1,
+                              \"query_group\":[\"%report%\"],
+                              \"query_group_wild_card\":1,
+                              \"auto_wlm\":true,
+                              \"queue_type\":\"auto\",
+                              \"priority\":\"normal\",
+                              \"concurrency_scaling\":\"auto\"
+                            },
+                            {
+                              \"name\":\"Default queue\",
+                              \"auto_wlm\":true,
+                              \"priority\":\"lowest\"
+                            },
+                            {
+                              \"short_query_queue\":true
+                            }
+                          ]"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RedshiftCluster-ParGrp'
+        - Key: ApplicationRole
+          Value: 'RedshiftCluster-ParGrp'
+  RedshiftCluster:
+    Type: 'AWS::Redshift::Cluster'
+    DependsOn: RedshiftClusterParameterGroup
+    DeletionPolicy: Snapshot
+    Properties:
+      AllowVersionUpgrade: true
+      AquaConfigurationStatus: !Ref AquaConfigurationStatus
+      AutomatedSnapshotRetentionPeriod: !Ref AutomatedSnapshotRetentionperiod
+      AvailabilityZoneRelocation: false
+      Classic: true
+      ClusterIdentifier: !Sub '${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-rdstclstr'
+      ClusterParameterGroupName: !Ref RedshiftClusterParameterGroup
+      ClusterSubnetGroupName: !Ref RedshiftClusterSubnetGroup
+      ClusterType: !Ref ClusterType      
+      DBName: !Ref DatabaseName
+      Encrypted: true
+      EnhancedVpcRouting: true
+      KmsKeyId: !If
+        - IsKmsKeyRequired
+        - !Select [1, !Ref KmsKeyid]
+        - !Ref "AWS::NoValue"
+      LoggingProperties:
+        !If
+        - IsLoggingEnabled
+        - BucketName: !Ref RedshiftLoggingBucketName
+          S3KeyPrefix: ''
+        - !Ref "AWS::NoValue"
+      ManualSnapshotRetentionPeriod: !Ref ManualSnapshotRetentionperiod
+      MasterUsername: !Sub '{{resolve:secretsmanager:${ResourceNamePrefix}-${EnvironmentType}-Redshift-Master-Scrt:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${ResourceNamePrefix}-${EnvironmentType}-Redshift-Master-Scrt:SecretString:password}}'
+      NodeType: !Ref NodeType
+      NumberOfNodes: !If 
+        - MultiNodeRequired
+        - !Ref NumberOfNodes
+        - !Ref 'AWS::NoValue'
+      Port: !Ref RedshiftPortNumber
+      PreferredMaintenanceWindow: !Ref PreferredMaintenancewindow
+      PubliclyAccessible: 'false'
+      RotateEncryptionKey: !Ref RotateEncryptionkey
+      IamRoles: 
+      - !GetAtt RedshiftClusterRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RdstClstr'
+        - Key: ApplicationRole
+          Value: 'RdstClstr'
+      VpcSecurityGroupIds: 
+        - !If 
+          - IsNewSgRequired
+          - !GetAtt RedshiftClusterSg.GroupId
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue01
+          - !Select [0, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue02
+          - !Select [1, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue03
+          - !Select [2, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue04
+          - !Select [3, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+        - !If
+          - SGValue05
+          - !Select [4, !Ref AdditionalSgIds]
+          - !Ref "AWS::NoValue"
+  RedshiftClusterRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RdstClstr-ScheduleRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'redshift.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RdstClstr-ScheduleRole'
+        - Key: ApplicationRole
+          Value: 'RdstClstr-ScheduleRole'
+      ManagedPolicyArns:
+           - "arn:aws:iam::aws:policy/AmazonRedshiftReadOnlyAccess"
+           - "arn:aws:iam::aws:policy/AmazonRedshiftQueryEditor"
+           - "arn:aws:iam::aws:policy/AmazonRedshiftDataFullAccess"
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-RdsClstr-SchedulePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'redshift-data:ListTables'
+                  - 'redshift-data:DescribeTable'
+                  - 'redshift-data:BatchExecuteStatement'
+                  - 'redshift-data:ListSchemas'
+                  - 'redshift-data:ExecuteStatement'
+                  - 'redshift-data:ListDatabases'
+                Resource: 
+                - !Sub 'arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${ResourceNamePrefixInSmallLetters}-${EnvironmentTypeInSmallLetters}-*'
+                - !Sub 'arn:aws:redshift-serverless:${AWS::Region}:${AWS::AccountId}:workgroup/*'
+              - Effect: Allow
+                Action:
+                  - 'redshift-data:GetStatementResult'
+                  - 'redshift-data:CancelStatement'
+                  - 'redshift-data:DescribeStatement'
+                Resource: '*'
+              - Sid: DataAPIIAMSessionPermissionsRestriction
+                Effect: Allow
+                Action: 
+                  - redshift-data:GetStatementResult
+                  - redshift-data:CancelStatement
+                  - redshift-data:DescribeStatement
+                  - redshift-data:ListStatements
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetEncryptionConfiguration
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-*-rma-dataset-bkt/*'
+                  - !Sub 'arn:aws:s3:::${ResourceNamePrefixInSmallLetters}-*-rma-dataset-bkt'
+              - Effect: Allow
+                Action: s3:HeadBucket
+                Resource: '*'
+Outputs:
+  RedshiftClusterSgId:
+    Description: SecurityGroup ID created along with RedshiftCluster.
+    Condition: IsNewSgRequired
+    Value: !GetAtt RedshiftClusterSg.GroupId
+  RedshiftClusterSubnetGroupName:
+    Description: RedshiftCluster's SubnetGroup name.
+    Value: !Ref RedshiftClusterSubnetGroup
+  RedshiftClusterParameterGroupName:
+    Description: RedshiftCluster's ParameterGroup name.
+    Value: !Ref RedshiftClusterParameterGroup
+  ClusterEndpoint:
+    Description: RedshiftCluster's Endpoint.
+    Value: !Join 
+      - ':'
+      - - !GetAtt 
+          - RedshiftCluster
+          - Endpoint.Address
+        - !GetAtt 
+          - RedshiftCluster
+          - Endpoint.Port
+  ClusterName:
+    Description: RedshiftCluster's name.
+    Value: !Ref RedshiftCluster

@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create Vactrain SnsTopic, SnsTopicPolicy for resources Ecs and Lambda.
+Parameters:
+  ResourceNamePrefix:
+    Description: Enter Resource Name prefix.
+    Type: String
+  EnvironmentType:
+    Description: Enter the EnvironmentType.
+    Type: String
+  ResourceRestrictionArn:
+    Description: Enter the Arn of the resource to which the Sns Topic is to assign.
+    Type: CommaDelimitedList
+Resources:
+  SnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-Vactrain
+      KmsMasterKeyId: alias/app
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-Vactrain
+      TopicName:
+        Fn::Sub: ${ResourceNamePrefix}-${EnvironmentType}-Vactrain
+  SnsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+      - !Ref SnsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LambdaAccessDenyPolicy
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - sns:Publish
+            Resource: !Ref SnsTopic
+            Condition:
+              StringNotLike:
+                aws:PrincipalArn: !Ref ResourceRestrictionArn
+          - Sid: LambdaAccessAllowPolicy
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - sns:Publish
+            Resource: !Ref SnsTopic
+            Condition:
+              StringLike:
+                aws:PrincipalArn: !Ref ResourceRestrictionArn
+Outputs:
+  VactrainTopicName:
+    Value: !GetAtt SnsTopic.TopicName
+  VactrainTopicArn:
+    Value: !GetAtt SnsTopic.TopicArn

@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: In this stack we are creating ReplicationSubnetGroup, ReplicationInstance. 
+Parameters:
+  IsMultiAZRequired:
+    Type: String
+    Description: Specifies whether the replication instance is a Multi-AZ deployment.
+  AllocatedStorage: 
+    Type: String
+    Description: The amount of storage (in gigabytes) to be initially allocated for the replication instance.
+  VersionUpgrade: 
+    Type: CommaDelimitedList 
+    Description: Enter the choice of true or false for AutoMinorVersionUpgrade,AllowMajorVersionUpgrade in the following way ex - true,true.
+                 This parameter AllowMajorVersionUpgrade must be set to true when specifying a value for the EngineVersion parameter that is a different major version than the replication instance's current version.
+  EngineVersion:
+    Type: String
+    Description: Mention it if you want to use the engine version other than the latest. By default it takes the latest version.
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: The weekly time range during which system maintenance can occur, in UTC.
+  ReplicationInstanceClass:
+    Description: >
+      ReplicationInstanceClass which can be utilized for dms to process data.
+      The compute and memory capacity of the replication instance as specified
+      by the replication instance class. Valid Values: dms.t2.micro |
+      dms.t2.small | dms.t2.medium | dms.t2.large | dms.c4.large | dms.c4.xlarge
+      | dms.c4.2xlarge | dms.c4.4xlarge
+    Type: String
+  KmsKeyId:
+    Type: String
+  SecurityGroups:
+    Type: CommaDelimitedList
+    Description: Specify the SecurityGroupID for DMS.
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: The list of SubnetIDs in your Virtual Private Cloud (VPC)
+  EnvironmentType:
+    Type: String
+    Description: Name of environment  with full length to deploy lambdas
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter Resource Name
+  ServiceName:
+    Type: String
+    Description: Enter name of the Service
+Conditions:
+  IsEngineVersionExists: !Equals [ !Ref EngineVersion, ""]
+Resources:
+  DMSReplicationSubnetGroup:
+    Type: 'AWS::DMS::ReplicationSubnetGroup'
+    Properties:
+      ReplicationSubnetGroupDescription: !Sub '${EnvironmentType} AppSubnetIDs'
+      SubnetIds: !Ref SubnetIds
+  DMSReplicationInstance:
+    Type: 'AWS::DMS::ReplicationInstance'
+    Properties:
+      MultiAZ: !Ref IsMultiAZRequired
+      PubliclyAccessible: false
+      AllocatedStorage: !Ref AllocatedStorage
+      AutoMinorVersionUpgrade: !Select [ 0, !Ref VersionUpgrade] 
+      AllowMajorVersionUpgrade: !Select [ 1, !Ref VersionUpgrade]
+      EngineVersion: !If [ IsEngineVersionExists, !Ref "AWS::NoValue", !Ref EngineVersion ]
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow 
+      ReplicationInstanceClass: !Ref ReplicationInstanceClass
+      ReplicationInstanceIdentifier: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ReplicationInstance'
+      ReplicationSubnetGroupIdentifier: !Ref DMSReplicationSubnetGroup
+      KmsKeyId: !Ref KmsKeyId
+      VpcSecurityGroupIds: !Ref SecurityGroups
+      Tags:
+        - Key: ApplicationRole
+          Value: DIG-DMSInstance
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ReplicationInstance'
+Outputs:
+  DMSReplicationInstanceArn:
+    Value: !Ref DMSReplicationInstance

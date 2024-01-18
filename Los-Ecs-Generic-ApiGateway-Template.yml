@@ -1,0 +1,327 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template generates RestAPi's to deploy them as Docker Containers Version:1.0
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: 'APIGateway Configurations'
+        Parameters:
+          - ApiDomainName
+          - VpcLinkId
+          - NLBEndpoint
+          - BasePath
+      - Label:
+          default: 'Network Configurations'
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: 'Custom Authorizer Configurations'
+        Parameters:
+          - AuthFunctionName
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names.
+  EnvironmentType:
+    Type: String
+    Description: Name your EnvironmentType according to your need.
+  ServiceName:
+    Type: String
+    Description: Specify the name of the service.
+  ApiDomainName:
+    Type: String
+    Description: Specify a Custom Domain Name for APIGateway. Uppercase letters are not allowed.
+  AuthFunctionName:
+    Type: String
+    Description: (Optional) Specify the Amazon Resource Name (ARN) of Lambda Function you want to intergarate.
+  VpcLinkId:
+    Type: String
+    Description: Specify the VpcLinkId Id.
+  NLBEndpoint:
+    Type: String
+    Default: >-
+      Prod-Cync-Los-ECS-App-NLB-41ffc6027a851e94.elb.us-east-1.amazonaws.com:5000
+    Description: Network loadbalancer End point including port number which may vary for each service.
+  BasePath:
+    Type: String
+    Description: String value to base path routing in custom domain.
+  WebAclArn:
+    Type: String
+    Description: Enter the WAF2 Arn to associate APIGateway.
+  AccesslogsDestinationArn:
+    Type: String
+    Description: Enter the arn of kinesis to stream to api access logs.
+Conditions: 
+  AuthorizerRequired: !Not [!Equals [!Ref AuthFunctionName, '' ]]
+  AuthorizerNotRequired: !Equals [!Ref AuthFunctionName, '' ]
+Resources:
+  LambdaInvocationRole:
+    Type: 'AWS::IAM::Role'
+    Condition: AuthorizerRequired
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-AuthorizerInvokeRole'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-AuthorizerInvokePolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Id: default
+            Statement:
+              - Sid: AuthorizerPolicy
+                Effect: Allow
+                Action: 'lambda:InvokeFunction'
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AuthFunctionName}'
+  API:
+    Type: 'AWS::ApiGateway::RestApi'
+    Condition: AuthorizerRequired
+    DependsOn:
+    - LambdaInvocationRole
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+      Description: !Sub 'API Gateway for ${ServiceName} Service with custom-authorizer.'
+      EndpointConfiguration: 
+        Types: 
+          - 'REGIONAL'      
+      Body:
+        openapi: "3.0.1"
+        info:
+          title: !Sub "${ServiceName}"
+          version: "2020-07-26T04:54:35Z"
+        servers:
+        - url: !Sub "https://${ApiDomainName}/{basePath}"
+          variables:
+            basePath:
+              default: !Sub "/${BasePath}"
+        paths:
+          /{proxy+}:
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: "string"
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: "string"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+            x-amazon-apigateway-any-method:
+              parameters:
+              - name: "authorization"
+                in: "header"
+                schema:
+                  type: "string"
+              - name: "proxy"
+                in: "path"
+                required: true
+                schema:
+                  type: "string"
+              responses:
+                "200":
+                  description: "200 response"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Empty"
+                "400":
+                  description: "400 response"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Error"
+                "500":
+                  description: "500 response"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/Error"
+                "403":
+                  description: "403 response"
+                  content: {}
+              security:
+              - Custom-Authorizer: []
+              x-amazon-apigateway-request-validator: "Validate query string parameters and\
+                \ headers"
+              x-amazon-apigateway-integration:
+                uri: !Sub "http://${NLBEndpoint}/{proxy}"
+                responses:
+                  default:
+                    statusCode: "200"
+                requestParameters:
+                  integration.request.path.proxy: "method.request.path.proxy"
+                passthroughBehavior: "when_no_match"
+                connectionType: "VPC_LINK"
+                connectionId: !Ref VpcLinkId
+                httpMethod: "ANY"
+                cacheNamespace: "zuh8bt"
+                cacheKeyParameters:
+                - "method.request.path.proxy"
+                type: "http_proxy"
+        components:
+          schemas:
+            Empty:
+              title: "Empty Schema"
+              type: "object"
+            Error:
+              title: "Error Schema"
+              type: "object"
+              properties:
+                message:
+                  type: "string"
+          securitySchemes:
+            Custom-Authorizer:
+              type: "apiKey"
+              name: "Authorization"
+              in: "header"
+              x-amazon-apigateway-authtype: "custom"
+              x-amazon-apigateway-authorizer:
+                authorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AuthFunctionName}/invocations"
+                authorizerCredentials: !Sub "arn:aws:iam::${AWS::AccountId}:role/${LambdaInvocationRole}"
+                authorizerResultTtlInSeconds: 0
+                type: "token"
+        x-amazon-apigateway-gateway-responses:
+          UNAUTHORIZED:
+            statusCode: 401
+            responseParameters:
+              gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+            responseTemplates:
+              application/json: "{\"message\":$context.error.messageString}"
+          ACCESS_DENIED:
+            statusCode: 403
+            responseParameters:
+              gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+            responseTemplates:
+              application/json: "{\"message\":$context.error.messageString}"
+        x-amazon-apigateway-request-validators:
+          Validate query string parameters and headers:
+            validateRequestParameters: true
+            validateRequestBody: false
+  ApiWithoutAuthorizer:
+    Type: 'AWS::ApiGateway::RestApi'
+    Condition: AuthorizerNotRequired
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+      Description: !Sub 'API Gateway for ${ServiceName} Service with custom-authorizer.'
+      EndpointConfiguration: 
+        Types: 
+          - 'REGIONAL'      
+      Body:
+        openapi: "3.0.1"
+        info:
+          title: !Sub "${ServiceName}"
+          version: "2020-07-23T05:58:28Z"
+        servers:
+        - url: !Sub "https://${ApiDomainName}/{basePath}"
+          variables:
+            basePath:
+              default: !Sub "/${BasePath}"
+        paths:
+          /{proxy+}:
+            x-amazon-apigateway-any-method:
+              parameters:
+              - name: "proxy"
+                in: "path"
+                required: true
+                schema:
+                  type: "string"
+              x-amazon-apigateway-integration:
+                type: "http_proxy"
+                uri: !Sub "http://${NLBEndpoint}/{proxy}"
+                responses:
+                  default:
+                    statusCode: "200"
+                requestParameters:
+                  integration.request.path.proxy: "method.request.path.proxy"
+                passthroughBehavior: "when_no_match"
+                connectionType: "VPC_LINK"
+                connectionId: !Ref VpcLinkId
+                httpMethod: "ANY"
+                cacheNamespace: "imrwv3"
+                cacheKeyParameters:
+                - "method.request.path.proxy"
+        components: {}
+        x-amazon-apigateway-gateway-responses:
+          ACCESS_DENIED:
+            statusCode: 403
+            responseParameters:
+              gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+            responseTemplates:
+              application/json: "{\"message\":$context.error.messageString}"
+          UNAUTHORIZED:
+            statusCode: 401
+            responseParameters:
+              gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+            responseTemplates:
+              application/json: "{\"message\":$context.error.messageString}"
+  ApiDeploy:
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      Description: API Deployment
+      RestApiId: !If [AuthorizerRequired, !Ref API, !Ref ApiWithoutAuthorizer]
+      StageName: !Ref EnvironmentType
+      StageDescription:
+        DataTraceEnabled: true
+        LoggingLevel: 'INFO'
+        AccessLogSetting:
+          Format: '{ ''requestId'':''$context.requestId'', ''ip'': ''$context.identity.sourceIp'',
+            ''caller'':''$context.identity.caller'', ''user'':''$context.identity.user'',''requestTime'':''$context.requestTime'',
+            ''xrayTraceId'':''$context.xrayTraceId'', ''wafResponseCode'':''$context.wafResponseCode'',
+            ''httpMethod'':''$context.httpMethod'',''resourcePath'':''$context.resourcePath'',
+            ''status'':''$context.status'',''protocol'':''$context.protocol'', ''responseLength'':''$context.responseLength''
+            }'
+          DestinationArn: !Ref AccesslogsDestinationArn
+
+  PathMapping:
+    Type: 'AWS::ApiGateway::BasePathMapping'
+    Properties:
+      BasePath: !Ref BasePath
+      RestApiId: !If [AuthorizerRequired, !Ref API, !Ref ApiWithoutAuthorizer]
+      DomainName: !Ref ApiDomainName
+      Stage: !Ref EnvironmentType
+    DependsOn:
+      - ApiDeploy
+  WafAssocationWithoutAuthorizer:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    DependsOn: 
+    - ApiDeploy
+    Properties:
+      ResourceArn: !If [AuthorizerRequired, !Sub 'arn:aws:apigateway:${AWS::Region}::/restapis/${API}/stages/${EnvironmentType}', !Sub 'arn:aws:apigateway:${AWS::Region}::/restapis/${ApiWithoutAuthorizer}/stages/${EnvironmentType}']
+      WebACLArn: !Ref WebAclArn
+Outputs:
+  RestApiID:
+    Description: Details of API
+    Value: !Ref API
+    Condition: AuthorizerRequired
+  DeploymentID:
+    Description: Details of API's Deployment ID
+    Value: !Ref ApiDeploy

@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This template creates BackupPlan,BackupSelection,BackupVault Version 0.1"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Naming Conventions
+      Parameters:
+      - ResourceNamePrefix
+      - EnvironmentType
+      - ServiceName
+      - BackupName
+    - Label:
+        default: BackupPlan
+      Parameters:
+      - BackupSchedule
+      - BackupPlanRuleValues
+      - BackupResourceArn
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names.
+  EnvironmentType:
+    Description: Name your EnvironmentType with name you want ex. Dev|Test|UAT|PROD|DEMO.
+    Type: String
+  ServiceName:
+    Type: String
+    Description: Enter the Name of the service.
+  BackupName:  
+   Type: String
+   Description: Mention the name of the service which have to be backedup.
+  BackupSchedule:
+   Type: String
+   Default: cron(0 0 * * ? *).
+   Description: Mention the time frame in cron expression to schedule the backup.
+  BackupPlanRuleValues:
+   Type: CommaDelimitedList 
+   Default: 35,60.
+   Description: Provide the values for DeleteAfterDays(Retention period),StartWindowMinutes.
+  BackupResourceArn:
+   Type: String
+   Default: 'arn:aws:dynamodb:us-east-1:040798654714:table/Los-Dev-*'
+   Description: Enter the Resource ARN which have to backedup.
+
+
+  
+Resources:
+  BackupRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${BackupName}-Role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "backup.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Role'
+        - Key: ApplicationRole
+          Value: !Sub 'Backup-Role'  
+  BackupPlan:
+    Type: "AWS::Backup::BackupPlan"
+    Properties:
+      BackupPlan:
+          BackupPlanName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${BackupName}-${ServiceName}-Plan'
+          BackupPlanRule:
+            - RuleName: "RuleForDailyBackups"
+              TargetBackupVault: !Ref BackupVault
+              ScheduleExpression: !Ref BackupSchedule
+              Lifecycle:
+                DeleteAfterDays: !Select [ 0, !Ref BackupPlanRuleValues ]
+              StartWindowMinutes: !Select [ 1, !Ref BackupPlanRuleValues ]
+
+  BackupSelection:
+    Type: "AWS::Backup::BackupSelection"
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+          SelectionName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${BackupName}-${ServiceName}-Selection'
+          IamRoleArn: !GetAtt BackupRole.Arn
+          Resources:
+            - !Ref BackupResourceArn
+
+  BackupVault:
+    Type: "AWS::Backup::BackupVault"
+    Properties:
+      BackupVaultName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${BackupName}-${ServiceName}-Vault'

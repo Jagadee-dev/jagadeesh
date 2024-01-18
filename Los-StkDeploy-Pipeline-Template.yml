@@ -1,0 +1,863 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+    CI/CD Pipeline to deploy the cloudformation stacks in account.Version: 1.0, Description of change: Stage order changed.
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - Label: 
+          default: "Naming Conventions"
+        Parameters: 
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label: 
+          default: "GitHub Details"
+        Parameters: 
+          - AutoDeployment
+          - GithubRepoName
+          - GithubBranchName
+          - GithubUser
+          - GithubTokenSecretName
+          - PipelineArtifactsBucketName
+      - Label: 
+          default: "Build Project Details"
+        Parameters: 
+          - CodebuildEnvironment
+          - EnvironmentComputeType
+          - BuildImageVersion
+      - Label: 
+          default: "Logging Details"
+        Parameters: 
+          - S3AccessLogBucketName
+          - S3ObjectRetentionDays
+      - Label:
+          default: "List of secret for the environment"
+        Parameters:
+          - SecretVariables1
+          - SecretVariables2
+      - Label:
+          default: "Shared resource details"
+        Parameters:
+          - OverrideParameters
+          - UpdateEnforcedStacks
+      - Label:
+          default: "Approvers Details"
+        Parameters:
+          - StackDeploymentApprovers
+          - Subscribers
+          - MinRequiredApprovals
+          - GroupAssumeRoles
+          - ContinuousStackUpdateMaxCount
+Parameters:
+  GithubRepoName:
+    Description: (Required) Specify the Gitub Repository name.
+    Type: String
+  GithubTokenSecretName:
+    Description: (Required) Specify name of the secret manager, where github token is stored.
+    Type: String
+  GithubBranchName:
+    Description: (Required) Specify the Github Branch for the Github repo.
+    Type: String
+  GithubUser:
+    Description: (Required) Specify the Github user where the repository lives.
+    Type: String
+    Default: idexcel-technologies-pvt-ltd
+  AutoDeployment:
+    Description: (Required) This option enables auto deployment for pipeline.
+    Type: String
+    Default: true
+    AllowedValues: [true, false]            
+  PipelineArtifactsBucketName:
+    Description: (Required) Specify the name for a S3 bucket where artifacts for the pipeline are stored.
+    Type: String
+  S3AccessLogBucketName:
+    Type: String
+    Description: (Optional) Enter the name of the S3 Bucket, where s3 access logs will be stored.
+  ServiceName:
+    Description: (Required) Specify the name of the service.
+    Type: String 
+  EnvironmentType:
+    Description: (Required) Name your EnvironmentType According to your need.
+    Type: String
+  ResourceNamePrefix:
+    Type: String
+    Description: (Required) Enter prefix for Resource Names.
+  CodebuildEnvironment:
+    Type: String
+    Default: LINUX_CONTAINER
+    Description: (Required) Enter the environment type for codebuild.
+    AllowedValues:
+      - LINUX_CONTAINER
+      - WINDOWS_CONTAINER
+  EnvironmentComputeType:
+    Type: String
+    Default: BUILD_GENERAL1_SMALL
+    Description: (Required) Enter the environment compute type for codebuild.
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+      - BUILD_GENERAL1_LARGE
+  BuildImageVersion:
+    Type: String
+    Description: (Required) The image version that identifies the Docker image to use for this build project.
+    Default: aws/codebuild/standard:6.0
+  S3ObjectRetentionDays:
+    Type: CommaDelimitedList
+    Description: '(Required) Specify the s3 object retention days in following format: CurrentVersionExpirationInDays,NoncurrentVersionExpirationInDays. Min:30 Max:1000'
+  Subscribers:
+    Type: CommaDelimitedList
+    Description: (Required) Specify the EmailID (or) DL to be subscribed for the SNS Topic being created. (e.g) awscloudsupport@idexcel.com=email:None:...
+    Default: "None,None,None,None,None,None,None,None,None,None"
+  SecretVariables1:
+    Type: String
+    Description: '(Optional) Provide SecretVariables to store in SecretsManager. Always pass the JSON string without "{" and "}"'
+    NoEcho: true
+  SecretVariables2:
+    Type: String
+    Description: (Optional) Provide SecretVariables to be stored in SecretsManager along with SecretVariables1.
+    NoEcho: true
+  StackDeploymentApprovers:
+    Type: String
+    Description: (Required) Specify the allowed IAM Users or Roles who will approver the stack deployment. 
+  MinRequiredApprovals:
+    Type: Number
+    MinValue: 1
+    MaxValue: 5
+    Description: '(Required) Number of approvals minimum required to declare whether Approved/Rejected (Min: 1 & Max: 5)'
+  GroupAssumeRoles:
+    Type: CommaDelimitedList
+    Default: 'N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N,N=N'
+    Description: '(Required)(Max:10) Specify the group and CFT assume role ARN details in following format: <GroupName>_GROUP_ROLE_ARN=ROLE_ARN. Please refer the documentation for the group allowed values. (e.g) NETWORK_GROUP_ROLE_ARN=arn:aws:iam::<AccID>:role/<RPrefix>-<Env>-SD-Network-Cft-Role'
+  ContinuousStackUpdateMaxCount:
+    Type: Number
+    MinValue: 1
+    MaxValue: 500
+    Description: '(Required)(Min: 1, Max: 500) The max number of stacks can be created (or) updated continuously in each pipeline trigger. The pipeline should be retriggered to deploy the remaining set of stacks, once max numbers of stack operation reached.'
+  OverrideParameters:
+    Type: String
+    Description: '(Optional) Specify the common resource stack output details in JSON format without "{" and "}". (ex) "VpcInfra_VPCID":"vpc-3234234"'
+  UpdateEnforcedStacks:
+    Type: String
+    Description: '(Optional) Specify the list of stack config file names with their files extension to perform the stack update explicitly even without adding the change note. (ex) xyz-service-Pipeline-Config.json,xyz-service-Infra-Config.json'
+Conditions:
+  ShouldCreateWebhook: !Equals [true, !Ref AutoDeployment]
+  IsLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName , '']]
+  Subscriber0: !Equals [ !Select [ 0, !Ref Subscribers ], "None" ]
+  Subscriber1: !Equals [ !Select [ 1, !Ref Subscribers ], "None" ]
+  Subscriber2: !Equals [ !Select [ 2, !Ref Subscribers ], "None" ]
+  Subscriber3: !Equals [ !Select [ 3, !Ref Subscribers ], "None" ]
+  Subscriber4: !Equals [ !Select [ 4, !Ref Subscribers ], "None" ]
+  Subscriber5: !Equals [ !Select [ 5, !Ref Subscribers ], "None" ]
+  Subscriber6: !Equals [ !Select [ 6, !Ref Subscribers ], "None" ]
+  Subscriber7: !Equals [ !Select [ 7, !Ref Subscribers ], "None" ]
+  Subscriber8: !Equals [ !Select [ 8, !Ref Subscribers ], "None" ]
+  Subscriber9: !Equals [ !Select [ 9, !Ref Subscribers ], "None" ]
+  
+  Group0Exist: !Not [ !Equals [ !Select [ 0, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group1Exist: !Not [ !Equals [ !Select [ 1, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group2Exist: !Not [ !Equals [ !Select [ 2, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group3Exist: !Not [ !Equals [ !Select [ 3, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group4Exist: !Not [ !Equals [ !Select [ 4, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group5Exist: !Not [ !Equals [ !Select [ 5, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group6Exist: !Not [ !Equals [ !Select [ 6, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group7Exist: !Not [ !Equals [ !Select [ 7, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group8Exist: !Not [ !Equals [ !Select [ 8, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group9Exist: !Not [ !Equals [ !Select [ 9, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group10Exist: !Not [ !Equals [ !Select [ 10, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group11Exist: !Not [ !Equals [ !Select [ 11, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group12Exist: !Not [ !Equals [ !Select [ 12, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group13Exist: !Not [ !Equals [ !Select [ 13, !Ref GroupAssumeRoles ], "N=N" ]]
+  Group14Exist: !Not [ !Equals [ !Select [ 14, !Ref GroupAssumeRoles ], "N=N" ]]
+  
+  
+Resources:
+  Webhook:
+    Type: AWS::CodePipeline::Webhook
+    Condition: ShouldCreateWebhook
+    Properties:
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-WBhk'
+      AuthenticationConfiguration:
+        SecretToken: !Sub '{{resolve:secretsmanager:${GithubTokenSecretName}:SecretString:GithubToken}}'
+      Filters:
+        - JsonPath: "$.ref"   
+          MatchEquals: refs/heads/{Branch}      
+      Authentication: GITHUB_HMAC       
+      TargetPipeline: !Ref Pipeline
+      TargetAction: Source
+      TargetPipelineVersion: !GetAtt 
+        - Pipeline
+        - Version
+      RegisterWithThirdParty: 'true'
+  ArtifactsBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags: 
+         - 
+           Key: Name
+           Value: !Sub '${PipelineArtifactsBucketName}'
+         -
+           Key: ApplicationRole
+           Value: !Sub '${ServiceName}-Artifact-Bucket'
+      BucketName: !Ref PipelineArtifactsBucketName
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        !If
+        - IsLoggingEnabled
+        - DestinationBucketName: !Ref S3AccessLogBucketName
+          LogFilePrefix: !Sub '${PipelineArtifactsBucketName}/'
+        - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: "TRUE"
+        BlockPublicPolicy: "TRUE"
+        IgnorePublicAcls: "TRUE"
+        RestrictPublicBuckets: "TRUE"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Prefix: data/
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Data-Folder-Delete-Rule'
+          - ExpirationInDays: !Select [ 0 , !Ref S3ObjectRetentionDays ]
+            NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Prefix: Deployment_Changes/
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Deployment-Changes-Folder-Delete-Rule'
+          - ExpirationInDays: !Select [ 0 , !Ref S3ObjectRetentionDays ]
+            NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Prefix: Dev-StkDeploy/
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Dev-StkDeploy-Folder-Delete-Rule'
+          - NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Prefix: Dev/
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Dev-Folder-Delete-Rule'
+          - ExpirationInDays: !Select [ 0 , !Ref S3ObjectRetentionDays ]
+            NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Prefix: packages/
+            Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-Packages-Folder-Delete-Rule'
+
+
+  ArtifactsBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    DependsOn:
+      - ArtifactsBucket
+    Properties:
+      Bucket: !Ref ArtifactsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: WriteDenyPolicy
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:PutBucketPolicy'
+              - 's3:PutObject'
+              - 's3:PutBucketAcl'
+              - 's3:PutBucketPublicAccessBlock'
+              - 's3:PutEncryptionConfiguration'
+              - 's3:DeleteBucket'
+              - 's3:DeleteObject'
+            Resource:
+              - !Sub 'arn:aws:s3:::${ArtifactsBucket}/*'
+              - !Sub 'arn:aws:s3:::${ArtifactsBucket}'
+            Condition:
+              StringNotLike:
+                'aws:PrincipalArn': 
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${CodePipelineExecutionRole}'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${CodeBuildServiceRole}'
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub 'arn:aws:s3:::${ArtifactsBucket}/*'
+              - !Sub 'arn:aws:s3:::${ArtifactsBucket}'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+  SDBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+    - ArtifactsBucket
+    Properties:
+      Tags: 
+      - 
+        Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CDBld'
+      -
+        Key: ApplicationRole
+        Value: !Sub '${ServiceName}-CDBld'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CDBld'
+      Description: !Sub Build project for the ${ServiceName}
+      Artifacts:
+        Type: CODEPIPELINE
+      QueuedTimeoutInMinutes: 5
+      TimeoutInMinutes: 120
+      ConcurrentBuildLimit: 1
+      Environment: 
+        Type: 
+          Ref: CodebuildEnvironment
+        ComputeType: 
+          Ref: EnvironmentComputeType
+        Image: !Ref BuildImageVersion
+        EnvironmentVariables:
+          - Name: BUILD_OUTPUT_BUCKET
+            Value: !Ref PipelineArtifactsBucketName
+          - Name: INFRA_SECRET_NAME
+            Value: !Ref VariableSecretManager
+          - Name: ENVIRONMENT_TYPE
+            Value: !Ref EnvironmentType
+          - Name: RESOURCE_NAME_PREFIX
+            Value: !Ref ResourceNamePrefix
+          - Name: APPROVAL_SNS_TOPIC_ARN
+            Value: !Ref ApprovalSNSTopic
+          - Name: ALLOWED_APPROVERS
+            Value: !Ref StackDeploymentApprovers
+          - Name: MIN_REQUIRED_APPROVALS
+            Value: !Ref MinRequiredApprovals
+          - Name: APPROVAL_DOCUMENT_NAME
+            Value: !Ref ApprovalDocument
+          - Name: STACK_UPDATE_MAX_COUNT
+            Value: !Ref ContinuousStackUpdateMaxCount
+          - Name: SD_GROUP_ROLE_ARN
+            Value: !GetAtt SDGroupAssumeRole.Arn
+          - Name: OVERRIDE_PARAMETERS
+            Value: !Sub '{${OverrideParameters}}'
+          - Name: UPDATE_ENFORCED_STACKS
+            Value: !Ref UpdateEnforcedStacks
+          - !If
+            - Group0Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 0, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 0, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group1Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 1, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 1, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group2Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 2, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 2, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group3Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 3, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 3, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group4Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 4, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 4, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group5Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 5, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 5, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group6Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 6, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 6, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group7Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 7, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 7, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group8Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 8, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 8, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group9Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 9, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 9, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group10Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 10, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 10, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group11Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 11, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 11, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group12Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 12, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 12, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group13Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 13, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 13, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+          - !If
+            - Group14Exist
+            - Name: !Select [ 0 , !Split [ '=', !Select [ 14, !Ref GroupAssumeRoles ] ] ]
+              Value: !Select [ 1 , !Split [ '=', !Select [ 14, !Ref GroupAssumeRoles ] ] ]
+            - !Ref AWS::NoValue
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source: 
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CodeBuild-CWLg'
+          Status: ENABLED
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CDPip'
+          -
+            Key: ApplicationRole
+            Value: !Sub '${ServiceName}-CDPip'
+        ArtifactStore: 
+            Location: !Ref PipelineArtifactsBucketName
+            Type: S3
+        Name: !Sub '${EnvironmentType}-${ServiceName}'
+        RoleArn: !GetAtt CodePipelineExecutionRole.Arn
+        Stages:
+        - Name: Source
+          Actions:
+          - Name: Source
+            ActionTypeId:
+              Category: Source
+              Owner: ThirdParty
+              Provider: GitHub
+              Version: "1"
+            Configuration:
+              Owner: !Ref GithubUser
+              Repo: !Ref GithubRepoName
+              Branch: !Ref GithubBranchName
+              OAuthToken: !Sub '{{resolve:secretsmanager:${GithubTokenSecretName}:SecretString:GithubToken}}'
+              PollForSourceChanges: false
+            OutputArtifacts:
+              - Name: Source
+            RunOrder: 1
+        - Name: Build
+          Actions:
+          - Name: StackDeployment
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Provider: CodeBuild
+              Version: "1"
+            Configuration:
+              ProjectName: !Ref SDBuildProject
+            InputArtifacts:
+              - Name: Source
+            OutputArtifacts:
+              - Name: Build
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Build-Role'
+        Tags: 
+          - Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Build-Role'
+          - Key: ApplicationRole
+            Value: !Sub '${ServiceName}-Build-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - codebuild.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CodeBuild-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action:
+                      - 'logs:CreateLogStream'
+                      - 'logs:PutLogEvents'
+                      - 'logs:CreateLogGroup'
+                    Resource:
+                      - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CodeBuild-CWLg*'
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Bucket-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 's3:GetObject'
+                      - 's3:GetObjectVersion'
+                      - 's3:PutObject'
+                      - 's3:ListBucket'
+                    Resource:
+                      - !Sub 'arn:aws:s3:::${PipelineArtifactsBucketName}/*'
+                      - !Sub 'arn:aws:s3:::${PipelineArtifactsBucketName}'            
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-GithubSecret-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action:
+                      - 'secretsmanager:GetSecretValue'
+                    Resource: 
+                      - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GithubTokenSecretName}-*'
+                      - !Ref VariableSecretManager
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CF-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - 'cloudformation:ListStacks'
+                    Resource: '*'
+                  - Effect: Allow
+                    Action: 
+                      - 'cloudformation:DescribeStacks'
+                      - 'cloudformation:CreateChangeSet'
+                      - 'cloudformation:ExecuteChangeSet'
+                      - 'cloudformation:DescribeChangeSet'
+                      - 'cloudformation:SetStackPolicy'
+                      - 'cloudformation:UpdateTerminationProtection'
+                    Resource: 
+                      - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ResourceNamePrefix}-${EnvironmentType}-*'
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SSM-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - 'ssm:StartAutomationExecution'
+                    Resource:
+                    - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${ApprovalDocument}*'
+                  - Effect: Allow
+                    Action:
+                      - 'ssm:DescribeAutomationStepExecutions'
+                    Resource: '*'
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupAssumedPassRole-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - 'iam:PassRole'
+                    Resource:
+                      - !GetAtt SDGroupAssumeRole.Arn
+            - !If
+              - Group0Exist
+              - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupPassRole-Iplcy'
+                PolicyDocument:
+                  Version: '2012-10-17'
+                  Statement:
+                    - Effect: Allow
+                      Action:
+                          - 'iam:PassRole'
+                      Resource: 
+                      - !If [ Group0Exist, !Select [ 1 , !Split [ '=', !Select [ 0, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group1Exist, !Select [ 1 , !Split [ '=', !Select [ 1, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group2Exist, !Select [ 1 , !Split [ '=', !Select [ 2, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group3Exist, !Select [ 1 , !Split [ '=', !Select [ 3, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group4Exist, !Select [ 1 , !Split [ '=', !Select [ 4, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group5Exist, !Select [ 1 , !Split [ '=', !Select [ 5, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group6Exist, !Select [ 1 , !Split [ '=', !Select [ 6, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group7Exist, !Select [ 1 , !Split [ '=', !Select [ 7, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group8Exist, !Select [ 1 , !Split [ '=', !Select [ 8, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group9Exist, !Select [ 1 , !Split [ '=', !Select [ 9, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group10Exist, !Select [ 1 , !Split [ '=', !Select [ 10, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group11Exist, !Select [ 1 , !Split [ '=', !Select [ 11, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group12Exist, !Select [ 1 , !Split [ '=', !Select [ 12, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group13Exist, !Select [ 1 , !Split [ '=', !Select [ 13, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                      - !If [ Group14Exist, !Select [ 1 , !Split [ '=', !Select [ 14, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+              - !Ref AWS::NoValue
+  CodePipelineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Role'
+        Tags: 
+          - 
+            Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Pipeline-Role'
+          -
+            Key: ApplicationRole
+            Value: !Sub 'Pipeline-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - 
+                Action: 
+                    - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service: 
+                    - codepipeline.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ArtifactsBucket-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 's3:GetObject'
+                      - 's3:PutObject'
+                      - 's3:ListBucket'
+                    Resource: 
+                    - !Sub 'arn:aws:s3:::${PipelineArtifactsBucketName}/*'
+                    - !Sub 'arn:aws:s3:::${PipelineArtifactsBucketName}'
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Build-PassRole-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                    - 
+                        Effect: Allow
+                        Action:
+                            - 'iam:PassRole'
+                        Resource: 
+                        - !GetAtt CodeBuildServiceRole.Arn
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Build-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action: 
+                      - 'codebuild:StartBuild'
+                      - 'codebuild:BatchGetBuilds'
+                    Resource: 
+                      - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${SDBuildProject}'
+  SDGroupAssumeRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupAssume-Role'
+        Description: This role is used to assume for creating group based assumed roles and policies
+        Tags: 
+          - Key: Name
+            Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupAssume-Role'
+          - Key: ApplicationRole
+            Value: !Sub '${ServiceName}-SDGroupAssume-Role'
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: 
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Principal:
+                  Service:
+                    - cloudformation.amazonaws.com
+        Path: /
+        Policies:
+            - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupPlcyActions-Iplcy'
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - 
+                    Effect: Allow
+                    Action:
+                      - 'iam:GetPolicy'
+                      - 'iam:TagPolicy'
+                      - 'iam:CreatePolicy'
+                      - 'iam:ListPolicyVersions'
+                      - 'iam:UntagPolicy'
+                      - 'iam:ListPolicyTags'
+                      - 'iam:CreatePolicyVersion'
+                      - 'iam:DeletePolicyVersion'
+                      - 'iam:DeleteRolePolicy'
+                      - 'iam:DeletePolicy'
+                    Resource:
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Common-Mgdplcy'
+                      - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Required-Iplcy'
+            - !If
+              - Group0Exist
+              - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-SDGroupRoleActions-Iplcy'
+                PolicyDocument:
+                  Version: '2012-10-17'
+                  Statement:
+                    - 
+                      Effect: Allow
+                      Action: 
+                        - 'iam:TagRole'
+                        - 'iam:UpdateRoleDescription'
+                        - 'iam:CreateRole'
+                        - 'iam:GetRole'
+                        - 'iam:UpdateRole'
+                        - 'iam:UpdateAssumeRolePolicy'
+                        - 'iam:ListRoleTags'
+                        - 'iam:UntagRole'
+                        - 'iam:ListRolePolicies'
+                        - 'iam:GetRolePolicy'
+                        - 'iam:AttachRolePolicy'
+                        - 'iam:PutRolePolicy'
+                        - 'iam:DeleteRolePolicy'
+                        - 'iam:DeleteRole'
+                        - 'iam:DetachRolePolicy'
+                      Resource:
+                        - !If [ Group0Exist, !Select [ 1 , !Split [ '=', !Select [ 0, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group1Exist, !Select [ 1 , !Split [ '=', !Select [ 1, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group2Exist, !Select [ 1 , !Split [ '=', !Select [ 2, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group3Exist, !Select [ 1 , !Split [ '=', !Select [ 3, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group4Exist, !Select [ 1 , !Split [ '=', !Select [ 4, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group5Exist, !Select [ 1 , !Split [ '=', !Select [ 5, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group6Exist, !Select [ 1 , !Split [ '=', !Select [ 6, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group7Exist, !Select [ 1 , !Split [ '=', !Select [ 7, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group8Exist, !Select [ 1 , !Split [ '=', !Select [ 8, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group9Exist, !Select [ 1 , !Split [ '=', !Select [ 9, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group10Exist, !Select [ 1 , !Split [ '=', !Select [ 10, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group11Exist, !Select [ 1 , !Split [ '=', !Select [ 11, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group12Exist, !Select [ 1 , !Split [ '=', !Select [ 12, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group13Exist, !Select [ 1 , !Split [ '=', !Select [ 13, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+                        - !If [ Group14Exist, !Select [ 1 , !Split [ '=', !Select [ 14, !Ref GroupAssumeRoles ] ] ], !Ref AWS::NoValue ]
+              - !Ref AWS::NoValue
+  ApprovalSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Approval-Topic'
+        - Key: ApplicationRole
+          Value: !Sub 'Approval-Topic'
+      TopicName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Approval-Topic'
+      DisplayName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Approval'
+      KmsMasterKeyId: 'alias/aws/sns'
+      Subscription:
+        - !If
+          - Subscriber0
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 0, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber1
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 1, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber2
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 2, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber3
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 3, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber4
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 4, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber5
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 5, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber6
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 6, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber7
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 7, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber8
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 8, !Ref Subscribers ]
+            Protocol: email
+        - !If
+          - Subscriber9
+          - !Ref "AWS::NoValue"
+          - Endpoint: !Select [ 9, !Ref Subscribers ]
+            Protocol: email
+  ApprovalSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+      - !Ref ApprovalSNSTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: BuildAccessDenyPolicy
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - sns:Publish
+            Resource: !Ref ApprovalSNSTopic
+            Condition:
+              StringNotLike:
+                aws:PrincipalArn: !GetAtt CodeBuildServiceRole.Arn
+          - Sid: BuildAccessAllowPolicy
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - sns:Publish
+            Resource: !Ref ApprovalSNSTopic
+            Condition:
+              StringLike:
+                aws:PrincipalArn: !GetAtt CodeBuildServiceRole.Arn
+  VariableSecretManager:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Variable-Scrt'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-ApprovalSecretsManager'
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Variable-Scrt'
+      Description: This secret is used to store few secret variables.
+      SecretString: !Sub '{${SecretVariables1}${SecretVariables2}}'
+  ApprovalDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Approval-SsmD'
+        - Key: ApplicationRole
+          Value: !Sub 'Approval-Automation-SsmD'
+      DocumentFormat: YAML
+      DocumentType: Automation
+      Content:
+        description: To send approval email as part of the StackDeployment process.
+        schemaVersion: '0.3'
+        parameters:
+          NotificationArn:
+            type: String
+            description: (Required) Specify the SNS Topic Amazon Resource Name (ARN)
+          Message:
+            type: String
+            description: (Required) Specify the message to be notified
+          Approvers:
+            type: StringList
+            description: (Required) IAM user or user ARN of approvers for the automation action
+          MinRequiredApprovals:
+            type: Integer
+            description: (Required) Number of approvals minimum required to declare whether Approved/Rejected.
+        mainSteps:
+          - name: approve
+            action: 'aws:approve'
+            onFailure: Abort
+            timeoutSeconds: 300
+            inputs:
+              NotificationArn: '{{ NotificationArn }}'
+              Message: '{{ Message }}'
+              MinRequiredApprovals: '{{ MinRequiredApprovals }}'
+              Approvers: '{{ Approvers }}'
+Outputs:
+  SDArtifactsBucketName:
+    Value: !Ref ArtifactsBucket
+    Description: Name of the Stack Deployment Artifacts bucket.              

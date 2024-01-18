@@ -1,0 +1,891 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  This template creates DB Backup Ecs service in existing cluster(Fargate) and including resources optional sns and s3 bucket creation, Ecr Repo, Log Group, SecurityGroup and Role and Policies.
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - Label: 
+          default: "Naming Conventions"
+        Parameters: 
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "Event Configuration"
+        Parameters:
+          - ScheduleExpression
+          - EventRuleState
+      - Label:
+          default: "S3 Configuration"
+        Parameters:
+          - IncludeBackupS3BucketCreation
+          - S3VpcEndPointId
+          - S3ObjectRetentionDays
+          - BackupBucketName
+          - S3AccessLogBucketName
+          - S3VpcEndPointId
+          - IncludeBucketPolicy
+      - Label:
+          default: "ECR Configurations"
+        Parameters: 
+          - ECRRepoName
+          - ECRScanOnPush
+          - PsqlBackupImageTagStoreName
+          - EcrImageCountDeleteAfter
+      - Label:
+          default: "ECS Configuration"
+        Parameters:
+          - TaskDefinitionInputs
+          - TDVolumes
+          - ClusterName
+          - S3BucketTdEnvs
+          - CommonTdEnvs
+      - Label:
+          default: "Network Configurations"
+        Parameters:
+          - AppSubnetIds
+          - ServerlessSg
+          - BucketPolicyWhiteListedIp
+      - Label: "SecretConfigurations"
+        Parameters:
+          - DbSecretName
+      - Label: "Sns Configurations"
+        Parameters:
+          - Subscription
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for Resource Names
+  ServiceName:
+    Type: String
+    Description: Enter the name of the service.
+  EnvironmentType:
+    Description: Name your EnvironmentType According to your need.
+    Type: String
+  TaskDefinitionInputs:
+    Type: CommaDelimitedList
+    Description: Enter the inputs required for ECS task definition in the format -> TaskCpu,TaskMemory,DisableNetworking,MemoryReservation,ContainerPath,N,N,N,N.
+  DbSecretName:
+    Type: String
+    Description: Enter the secret manager name of Db credentials to use.
+  TDVolumes:
+    Type: CommaDelimitedList
+    Description: Enter the container paths. Eg- true,false,false,false,false
+  ClusterName:
+    Type: String
+    Description: Enter the name of the cluster in which the service has to be created.
+  AppSubnetIds:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: Select private subnet in your selected VPC for your containers.
+  IncludeBackupS3BucketCreation:
+    Type: String
+    Description: From this field, you can ADD or REMOVE the S3 Bucket creation and Bucket Policy option for this DB Backup Infra template.
+    Default: true 
+    AllowedValues: [true, false]
+  ScheduleExpression:
+    Type: String
+    Description: Cron Expression based ECS Task Scheduling. For Example- cron(30 15 ? * MON-FRI *)
+  S3VpcEndPointId:
+    Type: String
+    Description: (Optional) Vpce-Id for Db Backup bucket policy restrictions.
+  S3ObjectRetentionDays:
+    Type: CommaDelimitedList
+    Description: (Required) Specify the s3 object retention days in following format  CurrentVersionExpirationInDays,NoncurrentVersionExpirationInDays. Min:30 Max:1000
+  EcrImageCountDeleteAfter:
+    Type: Number
+    MinValue: '2'
+    MaxValue: '50'
+    Description: 'Enter the Maximum number of Ecr images to keep in the repo. Min:2 Max:50'
+  BucketPolicyWhiteListedIp:
+    Type: CommaDelimitedList
+    Description: 'List of whitelisted Ip Address to Allow Get,Put,List in Backup Bucket'
+  ECRRepoName:
+    Type: String
+    Description: Ecr Repository name for ecs service. only small letters accepted
+  Subscription:
+    Type: CommaDelimitedList
+    Description: Enter the list of email subscribers to the sns topic.
+  BackupBucketName:
+    Type: String
+    Description: Enter the Name of S3 Bucket for PsqlBackup.
+  ServerlessSg:
+    Type: String
+    Description: Enter the serverless security group id
+  EventRuleState: 
+    Type: String
+    Description: Enter the state of the scheduled event rule.
+    Default: ENABLED
+    AllowedValues:
+      - "ENABLED"
+      - "DISABLED"
+  S3BucketTdEnvs:
+    Type: CommaDelimitedList
+    Description: Enter the list of S3 bucket names environment variables to add in taskdefination. eg- Backupbucket=los-dev-dbbackup-bucket,N=N,N=N,N=N,N=N
+    Default: 'N=N,N=N,N=N,N=N'
+  CommonTdEnvs:
+    Type: CommaDelimitedList
+    Description: Enter the list of Common environment variables to add in taskdefination. eg- Sns_Topic=
+    Default: 'N=N,N=N,N=N,N=N,N=N,N=N,N=N'
+  ECRScanOnPush:
+    Type: String
+    Description: Enter the value for ECR scanOnPush. True to enable scanning and false for no ecr.
+  PsqlBackupImageTagStoreName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: 'Specify the name of the parameter store where dynamic ECR image tag is stored.' 
+  IncludeBucketPolicy: 
+    Type: CommaDelimitedList
+    Description: Select true to ADD & false to REMOVE IP based and s3 endpoint based policy option respectively required for backups.
+  S3AccessLogBucketName:
+    Type: String
+    Description: Name of the access log bucket.
+  CreateSNSTopic:
+    Type: String
+    Description: Set to 'true' to create the SNS topic, 'false' to skip creating it.
+    AllowedValues: ["true", "false"]
+    Default: "true"
+  SnsTopicArn:
+    Type: String
+    Description: Enter the SNS topic arn to publish messages of the statemachine backup. 
+Conditions:
+  TDVolume0Exist: !Equals [ !Select [ 0, !Ref TDVolumes ], "false" ]
+  TDVolume1Exist: !Equals [ !Select [ 1, !Ref TDVolumes ], "false" ]
+  TDVolume2Exist: !Equals [ !Select [ 2, !Ref TDVolumes ], "false" ]
+  TDVolume3Exist: !Equals [ !Select [ 3, !Ref TDVolumes ], "false" ]
+  TDVolume4Exist: !Equals [ !Select [ 4, !Ref TDVolumes ], "false" ]
+
+  ShouldIncludeBackupS3BucketCreation: !Equals [true, !Ref IncludeBackupS3BucketCreation]
+
+  EmailId0: !Equals [ !Select [ 0, !Ref Subscription ], "None" ]
+  EmailId1: !Equals [ !Select [ 1, !Ref Subscription ], "None" ]
+  EmailId2: !Equals [ !Select [ 2, !Ref Subscription ], "None" ]
+  EmailId3: !Equals [ !Select [ 3, !Ref Subscription ], "None" ]
+  EmailId4: !Equals [ !Select [ 4, !Ref Subscription ], "None" ]
+
+  EnvVar0Exist: !Equals [ !Select [ 0, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar1Exist: !Equals [ !Select [ 1, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar2Exist: !Equals [ !Select [ 2, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar3Exist: !Equals [ !Select [ 3, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar4Exist: !Equals [ !Select [ 4, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar5Exist: !Equals [ !Select [ 5, !Ref CommonTdEnvs ], "N=N" ]
+  EnvVar6Exist: !Equals [ !Select [ 6, !Ref CommonTdEnvs ], "N=N" ]  
+
+  S3EnvVar0Exist: !Equals [ !Select [ 0, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar1Exist: !Equals [ !Select [ 1, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar2Exist: !Equals [ !Select [ 2, !Ref S3BucketTdEnvs ], "N=N" ]
+  S3EnvVar3Exist: !Equals [ !Select [ 3, !Ref S3BucketTdEnvs ], "N=N" ]
+
+  WhiteListedIpExist: !Equals [true, !Select [0, !Ref IncludeBucketPolicy]]
+  S3VpcEndPointIdExist: !Equals [true, !Select [1, !Ref IncludeBucketPolicy]]
+  IsLoggingEnabled: !Not [!Equals [ !Ref S3AccessLogBucketName , '']]
+  ShouldCreateSNSTopic: !Equals [!Ref CreateSNSTopic, "true"]
+
+Resources:
+  StateMachineLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine-CWLg'
+      RetentionInDays: !Sub '{{resolve:ssm:${ResourceNamePrefix}-${EnvironmentType}-CloudWatch-Log-Retention-Days}}'
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine-CWLg'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-CWLg'
+  StateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-StateMachine'
+      StateMachineName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine'
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      DefinitionString: !Sub 
+        - |
+          {
+            "Version": "1.0",
+            "Comment": "Run ECS/Fargate tasks",
+            "StartAt": "RunTask",
+            "States": {
+                "RunTask": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::ecs:runTask.sync",
+                    "Parameters": {
+                        "LaunchType": "FARGATE",
+                        "Cluster": "${Cluster}",
+                        "TaskDefinition": "${TaskDefinition}",
+                        "NetworkConfiguration": {
+                            "AwsvpcConfiguration": {
+                                "Subnets": ["${SubnetA}","${SubnetB}"],
+                                "AssignPublicIp": "${AssignPublicIp}",
+                                "SecurityGroups": ${SecurityGroups}
+                            }
+                        }
+                    },
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "States.ALL"
+                            ],
+                            "IntervalSeconds": 30,
+                            "MaxAttempts": 3,
+                            "BackoffRate": 2
+                        }
+                    ],
+                    "Catch": [{
+                            "ErrorEquals": [
+                                "ECS.AccessDeniedException",
+                                "ECS.BlockedException",
+                                "ECS.PlatformTaskDefinitionIncompatibilityException",
+                                "ECS.PlatformUnknownException",
+                                "ECS.UnsupportedFeatureException",
+                                "ECS.ClusterNotFoundException",
+                                "ECS.InvalidParameterException",
+                                "ECS.ClientException",
+                                "ECS.ServerException"
+                            ],
+                            "Next": "RecoveryState"
+                        },
+                        {
+                      "ErrorEquals": [
+                               "States.ALL"
+                       ],
+                   "Next": "RecoveryState"
+                  }
+                    ],
+                    "End": true
+                },
+                "RecoveryState": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sns:publish",
+                    "Parameters": {
+                        "Subject": "DB backup failed",
+                        "Message": "AWS Fargate Task restarted by Step Functions failed",
+                        "TopicArn": "${SnsTopicArn}"
+                    },
+                    "End": true
+                }
+            }
+          }
+        - Cluster: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}'
+          TaskDefinition: !Ref TaskDefinition
+          SubnetA: !Select 
+            - 0
+            - !Ref AppSubnetIds
+          SubnetB: !Select 
+            - 1
+            - !Ref AppSubnetIds
+          AssignPublicIp: DISABLED
+          SecurityGroups: !Sub '["${ServerlessSg}"]'
+          SnsTopicArn: !Ref PsqlBackupSnsTopic
+      RoleArn: !GetAtt StateMachineRole.Arn
+  StateMachineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine-Role'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine-Role'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-StateMachine-Role'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine-Plcy'
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource: !GetAtt ServiceRole.Arn
+              - Effect: Allow
+                Action:
+                  - 'ecs:StopTask'
+                  - 'ecs:DescribeTasks'
+                  - 'ecs:RunTask'
+                Resource: '*'
+                Condition:
+                  ArnEquals:
+                    'ecs:cluster': !Sub >-
+                      arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:GetLogDelivery'
+                  - 'logs:UpdateLogDelivery'
+                  - 'logs:DeleteLogDelivery'
+                  - 'logs:ListLogDeliveries'
+                  - 'logs:PutResourcePolicy'
+                  - 'logs:DescribeResourcePolicies'
+                  - 'logs:DescribeLogGroups'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:CreateLogGroup'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-*'
+              - Effect: Allow
+                Action:
+                  - 'SNS:Publish'
+                  - 'SNS:GetTopicAttributes'
+                  - 'SNS:ListSubscriptionsByTopic'
+                Resource: !Ref PsqlBackupSnsTopic
+              - Effect: Allow
+                Action:
+                  - 'events:PutTargets'
+                  - 'events:PutRule'
+                  - 'events:DescribeRule'
+                Resource:
+                  - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForECSTaskRule
+                  - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Rule
+              - !If
+                - S3EnvVar0Exist
+                - !Ref 'AWS::NoValue' 
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:ListBucket
+                    - s3:PutObject
+                  Resource:
+                    - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar1Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar1Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar2Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar2Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                    - !If
+                     - S3EnvVar3Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+                          - /*
+                    - !If
+                     - S3EnvVar3Exist
+                     - !Ref 'AWS::NoValue'
+                     - !Join 
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+  ECRRepo:
+    Type: 'AWS::ECR::Repository'
+    Properties:
+      RepositoryName: !Ref ECRRepoName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: !Ref ECRScanOnPush
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub '{ "rules": [ { "rulePriority": 1, "description": " lifecycle of latest ${EcrImageCountDeleteAfter}", "selection": { "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": ${EcrImageCountDeleteAfter} }, "action": { "type": "expire" } } ] }'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-EcrRepo'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-EcrRepo'
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWLg'
+      RetentionInDays: !Sub '{{resolve:ssm:${ResourceNamePrefix}-${EnvironmentType}-CloudWatch-Log-Retention-Days}}'
+      Tags: 
+      - Key: Name
+        Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWLg'
+      - Key: ApplicationRole
+        Value: !Sub '${ServiceName}-CWLg'
+  PsqlBackupBucket:
+    Type: 'AWS::S3::Bucket'
+    Condition: ShouldIncludeBackupS3BucketCreation
+    Properties:
+      BucketName: !Ref BackupBucketName
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+          !If
+          - IsLoggingEnabled
+          - DestinationBucketName: !Ref S3AccessLogBucketName
+            LogFilePrefix: !Ref BackupBucketName
+          - !Ref "AWS::NoValue"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: 'TRUE'
+        BlockPublicPolicy: 'TRUE'
+        IgnorePublicAcls: 'TRUE'
+        RestrictPublicBuckets: 'TRUE'
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: !Select [ 0 , !Ref S3ObjectRetentionDays ]
+            NoncurrentVersionExpirationInDays: !Select [ 1 , !Ref S3ObjectRetentionDays ]
+            Status: Enabled
+            Id: !Sub '${EnvironmentType}-${ServiceName}-Deletion-Rule'
+      Tags:
+        - Key: Name
+          Value: !Ref BackupBucketName
+        - Key: ApplicationRole
+          Value: !Sub ${ServiceName}-Bkt
+  BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Condition: ShouldIncludeBackupS3BucketCreation
+    Properties:
+      Bucket: !Ref PsqlBackupBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowSSLRequestsOnly
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - 's3:*'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PsqlBackupBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PsqlBackupBucket
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:PutBucketAcl'
+              - 's3:PutBucketPolicy'
+              - 's3:PutBucketPublicAccessBlock'
+            Resource:
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PsqlBackupBucket
+                  - /*
+              - !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref PsqlBackupBucket
+            Condition:
+              StringLike:
+                aws:CalledVia: cloudformation.amazonaws.com
+                aws:PrincipalArn: 
+                  - !Sub 'arn:aws:sts::*:assumed-role/${ResourceNamePrefix}-${EnvironmentType}-SDGrp-Backup-*'          
+          - !If
+            - WhiteListedIpExist
+            - Effect: Deny
+              Principal: '*'
+              Action:
+                - 's3:GetBucketPolicy'
+                - 's3:ListBucket'           
+              Resource:
+                - !Join 
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref PsqlBackupBucket
+                    - /*
+                - !Join 
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref PsqlBackupBucket
+              Condition:
+                NotIpAddress:
+                  'aws:SourceIp': !Ref BucketPolicyWhiteListedIp   
+            - !Ref "AWS::NoValue" 
+          - !If
+            - S3VpcEndPointIdExist               
+            - Effect: Deny
+              Principal: '*'
+              Action:
+                - 's3:GetObject'
+                - 's3:PutObject'
+              Resource:
+                - !Join 
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref PsqlBackupBucket
+                    - /*
+                - !Join 
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref PsqlBackupBucket
+              Condition:
+                StringNotEquals:
+                  'aws:sourceVpce': !Ref S3VpcEndPointId
+            - !Ref "AWS::NoValue"                
+  ServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Service-Role'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Role'
+        - Key: ApplicationRole
+          Value: !Sub ${ServiceName}-ServiceRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Service-Plcy'
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PsqlBackupBucket}'
+                  - !Sub 'arn:aws:s3:::${PsqlBackupBucket}/*'
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${DbSecretName}-*'
+              - Effect: Allow
+                Action: 'ecs:UpdateService'
+                Resource: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ClusterName}/${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}:latest'
+              - Effect: Allow
+                Action:
+                  - 'ecr:BatchGetImage'
+                  - 'ecr:GetDownloadUrlForLayer'
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ECRRepo}'
+              - Effect: Allow
+                Action: 'ecr:GetAuthorizationToken'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateContainerInstancesState
+                  - ecs:RegisterContainerInstance
+                  - ecs:DeregisterContainerInstance
+                  - ecs:SubmitAttachmentStateChanges
+                  - ecs:SubmitTaskStateChange
+                  - ecs:Poll
+                  - ecs:StartTelemetrySession
+                  - ecs:SubmitContainerStateChange
+                  - ecs:DescribeClusters
+                Resource: 
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}'
+                  - !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:container-instance/${ClusterName}/*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroup}:log-stream:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-*'
+              - Effect: Allow
+                Action:
+                  - 'SNS:Publish'
+                Resource: !Ref PsqlBackupSnsTopic
+            Version: 2012-10-17
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    DependsOn:
+      - ECRRepo
+      - ServiceRole
+      - LogGroup
+      - PsqlBackupBucket
+    Properties:
+      Cpu: !Select [ 0, !Ref TaskDefinitionInputs ] 
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-TD'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-Td'      
+      ExecutionRoleArn: !GetAtt ServiceRole.Arn
+      Family: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-TD'
+      Memory: !Select [ 1, !Ref TaskDefinitionInputs ]
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt ServiceRole.Arn
+      Volumes:
+        - !If
+          - TDVolume0Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeOne'
+        - !If
+          - TDVolume1Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeTwo'
+        - !If
+          - TDVolume2Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeThree'
+        - !If
+          - TDVolume3Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFour'
+        - !If
+          - TDVolume4Exist
+          - !Ref "AWS::NoValue"
+          - 
+            Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFive'
+      ContainerDefinitions:
+        - Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}'
+          MountPoints:
+          - !If
+            - TDVolume0Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 4, !Ref TaskDefinitionInputs ]  
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeOne'
+          - !If
+            - TDVolume1Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 5, !Ref TaskDefinitionInputs ]  
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeTwo'
+          - !If
+            - TDVolume2Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 6, !Ref TaskDefinitionInputs ] 
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeThree'
+          - !If
+            - TDVolume3Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 7, !Ref TaskDefinitionInputs ]
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFour'
+          - !If
+            - TDVolume4Exist
+            - !Ref "AWS::NoValue"
+            - ContainerPath: !Select [ 8, !Ref TaskDefinitionInputs ] 
+              ReadOnly: false
+              SourceVolume: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-VolumeFive'
+          DisableNetworking: !Select [ 2, !Ref TaskDefinitionInputs ]
+          ReadonlyRootFilesystem: true
+          Environment:
+            - !If
+              - EnvVar0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 0, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar1Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 1, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar2Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 2, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 3, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar4Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 4, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 4, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar5Exist
+              - !Ref "AWS::NoValue"              
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 5, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 5, !Ref CommonTdEnvs ] ] ]
+            - !If
+              - EnvVar6Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 6, !Ref CommonTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 6, !Ref CommonTdEnvs ] ] ]                
+            - !If
+              - S3EnvVar0Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 0, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar1Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 1, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar2Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 2, !Ref S3BucketTdEnvs ] ] ]
+            - !If
+              - S3EnvVar3Exist
+              - !Ref "AWS::NoValue"
+              - Name:  !Select [ 0, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+                Value:  !Select [ 1, !Split [ '=', !Select [ 3, !Ref S3BucketTdEnvs ] ] ]
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWLg'
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs
+          Essential: true
+          Image: !Sub '${ECRRepo.RepositoryUri}:${PsqlBackupImageTagStoreName}'
+          MemoryReservation: !Select [ 3, !Ref TaskDefinitionInputs ]
+  TaskSchedule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: This Cw rule used to scale-Up and Scale-Down the PsqlBackup Ecs Service.
+      Name: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWRule'
+      ScheduleExpression: !Ref ScheduleExpression
+      State: !Ref EventRuleState
+      Targets:
+        - Arn: !Ref StateMachine
+          Id: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-statemachine'
+          RoleArn: !GetAtt RuleRole.Arn
+  RuleRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWRule-Role'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-CWRule-Role'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-CWRule-Role'          
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-EventRule-Plcy'
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: 'states:StartExecution'
+                Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-StateMachine
+  PsqlBackupSnsTopic:
+    Type: 'AWS::SNS::Topic'
+    Condition: ShouldCreateSNSTopic
+    Properties:
+      DisplayName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Topic'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Topic'
+        - Key: ApplicationRole
+          Value: !Sub ${ServiceName}-Topic
+      TopicName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Topic'
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - !If
+          - EmailId0
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 0, !Ref Subscription ]
+            Protocol: email
+        - !If
+          - EmailId1
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 1, !Ref Subscription ]
+            Protocol: email
+        - !If
+          - EmailId2
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 2, !Ref Subscription ]
+            Protocol: email
+        - !If
+          - EmailId3
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 3, !Ref Subscription ]
+            Protocol: email
+        - !If
+          - EmailId4
+          - !Ref "AWS::NoValue"
+          -
+            Endpoint: !Select [ 4, !Ref Subscription ]
+            Protocol: email
+  PsqlBackupSnsTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Condition: ShouldCreateSNSTopic
+    Properties:
+      Topics:
+        - !Ref PsqlBackupSnsTopic
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - 'sns:Publish'
+            Resource: !Ref PsqlBackupSnsTopic
+            Condition:
+              StringEquals:
+                'AWS:SourceOwner': !Sub '${AWS::AccountId}'
+Outputs:
+  TaskDefinitionName:
+    Description: This function returns taskdefinition name.
+    Value: !Select [ 0, !Split [ ':', !Select [ 1,!Split ['/', !Ref TaskDefinition ]] ] ]
+  TaskDefinitionArn:
+    Description: Ref function returns the ARN of the MyTaskDefinition task definition, such as arn:aws:ecs:us-west-2:123456789012:task-definition/TaskDefinitionFamily:1.
+    Value: !Ref TaskDefinition
+  ECRRepoName:
+    Description: Ref returns the resource name, such as test-repository.
+    Value: !Ref ECRRepo
+  ECRRepoArn:
+    Description: Returns the Amazon Resource Name (ARN) for the specified AWS::ECR::Repository resource. For example, arn:aws:ecr:eu-west-1:123456789012:repository/test-repository .
+    Value: !GetAtt ECRRepo.Arn
+  SNSTopicName:
+    Value: !Ref PsqlBackupSnsTopic
+  InfraStackName:
+    Value: !Sub '${AWS::StackName}'

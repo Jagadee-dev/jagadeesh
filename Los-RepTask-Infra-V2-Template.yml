@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:  A CloudFormation template to create ReplicationSubnetGroup, ReplicationInstance, ReplicationTask, Endpoints and dms role & the purpose of this setup is to fetch the data lender wise from rds and moving the same to DIG App Bucket. Version.1.0
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Naming Configurations"
+        Parameters:
+          - ResourceNamePrefix
+          - EnvironmentType
+          - ServiceName
+      - Label:
+          default: "PostgresSQL Endpoint Configurations"
+        Parameters:
+          - DBNames
+          - KmsKeyId
+          - RDSSecretManagerArn
+      - Label:
+          default: "S3Target Endpoint Configurations"
+        Parameters:
+          - DIGAppBucketName
+      - Label:
+          default: "Replication Task Configurations"
+        Parameters:
+          - DMSReplicationInstanceArn
+      - Label:
+          default: "LogGroup Configurations"
+        Parameters:
+          - CloudwatchRetentionDays
+      - Label:
+          default: "Network Configurations"
+        Parameters:
+          - VpcId
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Description: Enter prefix for resource names.
+  EnvironmentType:
+    Type: String
+    Description: Enter environmenttype according to need.
+  ServiceName:
+    Type: String
+    Description: Enter name of the service to create replication task resources.
+  DBNames:
+    Type: String
+    Description: Enter the name of Database to create PostgresSQL, S3, DMS ReplicationTask & CloudWatch LogGroup.
+  KmsKeyId:
+    Type: String
+    Description: Enter Amazon Kms Key Id to create PostgresSQL & S3 Endpoints.
+  RDSSecretManagerArn:
+    Type: String
+    Description: Enter Amazon Resource Names ARN of RDS Secret Manager to create PostgresSQL Endpoint.
+  DIGAppBucketName:
+    Type: String
+    Description: Enter DIGAppBucket Name from DIG SAM Stack to migrate the data from psql.
+  DMSReplicationInstanceArn:
+    Type: String
+    Description: Enter Amazon Resource Names ARN of DMS Replication Instance to create Replication Tasks.
+  CloudwatchRetentionDays:
+    Type: Number
+    Description: Enter the number of days to retain the log events in the specified log group.
+  VpcId:
+    Type: String
+    Description: Enter VPC ID for Network & Connectivity.
+Conditions:
+  DBNameExists: !Not [!Equals [!Ref DBNames, 'None']]
+Resources:
+  DMSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ExecutionRole'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-ExecutionRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: 'dms.us-east-1.amazonaws.com'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole'
+        - 'arn:aws:iam::aws:policy/service-role/AmazonDMSCloudWatchLogsRole'
+      Path: /
+      Policies:
+        - PolicyName: AwsDataIntegrationSecretPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                  - 'secretsmanager:DescribeSecret'
+                Resource: !Ref RDSSecretManagerArn   
+              - Effect: Allow
+                Action: 
+                  - 's3:GetObject'
+                  - 's3:DeleteObject'
+                  - 's3:PutObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${DIGAppBucketName}/*'
+                  - !Sub 'arn:aws:s3:::${DIGAppBucketName}'
+  PostgreSQLSourceEndpoint:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBNameExists
+    Properties:
+      EndpointIdentifier: !Sub '${ServiceName}-PsqlEndpnt'
+      ResourceIdentifier: !Sub '${ServiceName}-PsqlEndpnt'
+      EndpointType: source
+      EngineName: postgres
+      KmsKeyId: !Ref KmsKeyId
+      DatabaseName: !Ref DBNames
+      PostgreSqlSettings:
+        HeartbeatEnable: true
+        HeartbeatFrequency: 1
+        SecretsManagerSecretId: !Ref RDSSecretManagerArn
+        SecretsManagerAccessRoleArn: !GetAtt DMSExecutionRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ServiceName}-PsqlEndpnt'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-PsqlEndpnt'
+  S3TargetEndpoint:
+    Type: 'AWS::DMS::Endpoint'
+    Condition: DBNameExists
+    Properties:
+      EndpointIdentifier: !Sub '${ServiceName}-S3Endpnt'
+      ResourceIdentifier: !Sub '${ServiceName}-S3Endpnt'
+      EndpointType: target
+      EngineName: S3
+      KmsKeyId: !Ref KmsKeyId
+      ExtraConnectionAttributes: addColumnName=true
+      S3Settings:
+        BucketName: !Ref DIGAppBucketName
+        BucketFolder: !Join [ "/", [ "dms_rawdata", !Ref DBNames] ]
+        ServiceAccessRoleArn: !GetAtt DMSExecutionRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ServiceName}-S3Endpnt'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-S3Endpnt'
+  DMSReplicationTask:
+    Type: 'AWS::DMS::ReplicationTask'
+    Condition: DBNameExists
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstanceArn
+      ReplicationTaskIdentifier: !Ref ServiceName
+      ReplicationTaskSettings: |-
+        {
+                                    "TargetMetadata": {
+                                        "TargetSchema": "",
+                                        "SupportLobs": true,
+                                        "FullLobMode": false,
+                                        "LobChunkSize": 64,
+                                        "LimitedSizeLobMode": true,
+                                        "LobMaxSize": 32,
+                                        "InlineLobMaxSize": 0,
+                                        "LoadMaxFileSize": 0,
+                                        "ParallelLoadThreads": 0,
+                                        "ParallelLoadBufferSize": 0,
+                                        "BatchApplyEnabled": false,
+                                        "TaskRecoveryTableEnabled": false,
+                                        "ParallelLoadQueuesPerThread": 0,
+                                        "ParallelApplyThreads": 0,
+                                        "ParallelApplyBufferSize": 0,
+                                        "ParallelApplyQueuesPerThread": 0
+                                    },
+                                    "FullLoadSettings": {
+                                        "TargetTablePrepMode": "DO_NOTHING",
+                                        "CreatePkAfterFullLoad": false,
+                                        "StopTaskCachedChangesApplied": false,
+                                        "StopTaskCachedChangesNotApplied": false,
+                                        "MaxFullLoadSubTasks": 8,
+                                        "TransactionConsistencyTimeout": 600,
+                                        "CommitRate": 10000
+                                    },
+                            "Logging": {
+                                "EnableLogging": true,
+                                "LogComponents": [
+                                    {
+                                        "Id": "SOURCE_UNLOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "SOURCE_CAPTURE",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_LOAD",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TARGET_APPLY",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    },
+                                    {
+                                        "Id": "TASK_MANAGER",
+                                        "Severity": "LOGGER_SEVERITY_DEFAULT"
+                                    }
+                                ],
+                                "CloudWatchLogGroup": null,
+                                "CloudWatchLogStream": null
+                            },
+                            "ControlTablesSettings": {
+                                "historyTimeslotInMinutes": 5,
+                                "ControlSchema": "",
+                                "HistoryTimeslotInMinutes": 5,
+                                "HistoryTableEnabled": false,
+                                "SuspendedTablesTableEnabled": false,
+                                "StatusTableEnabled": false
+                            },
+                            "StreamBufferSettings": {
+                                "StreamBufferCount": 3,
+                                "StreamBufferSizeInMB": 8,
+                                "CtrlStreamBufferSizeInMB": 5
+                            },
+                            "ChangeProcessingDdlHandlingPolicy": {
+                                "HandleSourceTableDropped": false,
+                                "HandleSourceTableTruncated": false,
+                                "HandleSourceTableAltered": true
+                            },
+                            "ErrorBehavior": {
+                                "DataErrorPolicy": "LOG_ERROR",
+                                "DataTruncationErrorPolicy": "LOG_ERROR",
+                                "DataErrorEscalationPolicy": "SUSPEND_TABLE",
+                                "DataErrorEscalationCount": 0,
+                                "TableErrorPolicy": "SUSPEND_TABLE",
+                                "TableErrorEscalationPolicy": "STOP_TASK",
+                                "TableErrorEscalationCount": 0,
+                                "RecoverableErrorCount": -1,
+                                "RecoverableErrorInterval": 5,
+                                "RecoverableErrorThrottling": true,
+                                "RecoverableErrorThrottlingMax": 1800,
+                                "ApplyErrorDeletePolicy": "IGNORE_RECORD",
+                                "ApplyErrorInsertPolicy": "LOG_ERROR",
+                                "ApplyErrorUpdatePolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationPolicy": "LOG_ERROR",
+                                "ApplyErrorEscalationCount": 0,
+                                "ApplyErrorFailOnTruncationDdl": false,
+                                "FullLoadIgnoreConflicts": true,
+                                "FailOnTransactionConsistencyBreached": false,
+                                "FailOnNoTablesCaptured": false
+                            },
+                            "ChangeProcessingTuning": {
+                                "BatchApplyPreserveTransaction": true,
+                                "BatchApplyTimeoutMin": 1,
+                                "BatchApplyTimeoutMax": 30,
+                                "BatchApplyMemoryLimit": 500,
+                                "BatchSplitSize": 0,
+                                "MinTransactionSize": 1000,
+                                "CommitTimeout": 1,
+                                "MemoryLimitTotal": 1024,
+                                "MemoryKeepTime": 60,
+                                "StatementCacheSize": 50
+                            },
+                            "PostProcessingRules": null,
+                            "CharacterSetSettings": null,
+                            "LoopbackPreventionSettings": null,
+                            "BeforeImageSettings": null
+                        }
+      SourceEndpointArn: !Ref PostgreSQLSourceEndpoint
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-RepTask'
+        - Key: ApplicationRole
+          Value: !Sub '${ServiceName}-RepTask'
+      TableMappings: |-
+        {
+            "rules": [
+                {
+                    "rule-type": "selection",
+                    "rule-id": "1",
+                    "rule-name": "1",
+                    "object-locator": {
+                        "schema-name": "public",
+                        "table-name": "%"
+                    },
+                    "rule-action": "exclude"
+                },
+                {
+                    "rule-type": "selection",
+                    "rule-id": "2",
+                    "rule-name": "2",
+                    "object-locator": {
+                        "schema-name": "%",
+                        "table-name": "%"
+                    },
+                    "rule-action": "include"
+                }
+            ]
+        }
+      TargetEndpointArn: !Ref S3TargetEndpoint
+  DMSLogGroup: 
+    Type: AWS::Logs::LogGroup 
+    Condition: DBNameExists
+    Properties: 
+      LogGroupName: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${DBNames}-Logs'
+      RetentionInDays: !Ref CloudwatchRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-${DBNames}-Logs'

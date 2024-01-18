@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A CloudFormation template to create Autoscaling Scheduled Action.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:        
+    - Label:
+        default: AutoScaling Parameters
+      Parameters:
+        - InferenceAutoscalingScheduledAction
+        - InferenceAutoScalingGroupName
+        - RetrainAutoscalingScheduledAction
+        - RetrainAutoScalingGroupName
+Parameters:
+  InferenceAutoscalingScheduledAction:
+    Type: CommaDelimitedList
+    Description: 'Specify the AutoscalingScheduledAction values in following format: DesiredCapacity,MinSize,MaxSize,Cron Expression,TimeZone.'   
+    #### Enter the timezone in this format America/New_York, America/New_York, America/Los_Angeles, Asia/Kolkata {EST, EDT, PST, IST}
+    Default: '1:1:1:30 06 * * *:America/New_York,0:0:0:30 07 * * *:America/Los_Angeles,None,None,None,None,None,None,None,None' # here timezones followed are EST and PST
+  RetrainAutoscalingScheduledAction:
+    Type: CommaDelimitedList
+    Description: 'Specify the AutoscalingScheduledAction values in following format: DesiredCapacity,MinSize,MaxSize,Cron Expression,TimeZone.'   
+    #### Enter the timezone in this format America/New_York, America/New_York, America/Los_Angeles, Asia/Kolkata {EST, EDT, PST, IST}
+    Default: '1:1:1:30 06 * * *:America/New_York,0:0:0:30 07 * * *:America/Los_Angeles,None,None,None,None,None,None,None,None' # here timezones followed are EST and PST
+  InferenceAutoScalingGroupName:
+    Type: String
+    Description: Enter the name of the autoscaling group in the following format - ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Asg
+    # ServiceName depends on the requirement.
+  RetrainAutoScalingGroupName:
+    Type: String
+    Description: Enter the name of the autoscaling group in the following format - ${ResourceNamePrefix}-${EnvironmentType}-${ServiceName}-Asg
+    # ServiceName depends on the requirement.
+Conditions:
+  IsInfAutoscalingScheduledAction0Exist: !Not [ !Equals [ !Select [ 0, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction1Exist: !Not [ !Equals [ !Select [ 1, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction2Exist: !Not [ !Equals [ !Select [ 2, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction3Exist: !Not [ !Equals [ !Select [ 3, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction4Exist: !Not [ !Equals [ !Select [ 4, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction5Exist: !Not [ !Equals [ !Select [ 5, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction6Exist: !Not [ !Equals [ !Select [ 6, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction7Exist: !Not [ !Equals [ !Select [ 7, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction8Exist: !Not [ !Equals [ !Select [ 8, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsInfAutoscalingScheduledAction9Exist: !Not [ !Equals [ !Select [ 9, !Ref InferenceAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction0Exist: !Not [ !Equals [ !Select [ 0, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction1Exist: !Not [ !Equals [ !Select [ 1, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction2Exist: !Not [ !Equals [ !Select [ 2, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction3Exist: !Not [ !Equals [ !Select [ 3, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction4Exist: !Not [ !Equals [ !Select [ 4, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction5Exist: !Not [ !Equals [ !Select [ 5, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction6Exist: !Not [ !Equals [ !Select [ 6, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction7Exist: !Not [ !Equals [ !Select [ 7, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction8Exist: !Not [ !Equals [ !Select [ 8, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+  IsRetAutoscalingScheduledAction9Exist: !Not [ !Equals [ !Select [ 9, !Ref RetrainAutoscalingScheduledAction ], 'None'] ]
+
+Resources: 
+  AutoscalingScheduledAction01:
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction0Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 0, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 0, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 0, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 0, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 0, !Ref InferenceAutoscalingScheduledAction ] ] ]
+  AutoscalingScheduledAction02: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction1Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 1, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 1, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 1, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 1, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 1, !Ref InferenceAutoscalingScheduledAction ] ] ]
+  AutoscalingScheduledAction03: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction2Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 2, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 2, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 2, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 2, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 2, !Ref InferenceAutoscalingScheduledAction ] ] ]      
+  AutoscalingScheduledAction04: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction3Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 3, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 3, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 3, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 3, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 3, !Ref InferenceAutoscalingScheduledAction ] ] ]       
+  AutoscalingScheduledAction05: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction4Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 4, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 4, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 4, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 4, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 4, !Ref InferenceAutoscalingScheduledAction ] ] ]       
+  AutoscalingScheduledAction06: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction5Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 5, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 5, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 5, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 5, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 5, !Ref InferenceAutoscalingScheduledAction ] ] ]        
+  AutoscalingScheduledAction07: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction6Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 6, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 6, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 6, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 6, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 6, !Ref InferenceAutoscalingScheduledAction ] ] ]       
+  AutoscalingScheduledAction08: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction7Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 7, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 7, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 7, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 7, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 7, !Ref InferenceAutoscalingScheduledAction ] ] ]      
+  AutoscalingScheduledAction09: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction8Exist
+    Properties:
+      AutoScalingGroupName: !Ref InferenceAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 8, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 8, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 8, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 8, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 8, !Ref InferenceAutoscalingScheduledAction ] ] ]       
+  AutoscalingScheduledAction10: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsInfAutoscalingScheduledAction9Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 9, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 9, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 9, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 9, !Ref InferenceAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 9, !Ref InferenceAutoscalingScheduledAction ] ] ]
+  AutoscalingScheduledAction11: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction0Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 0, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 0, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 0, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 0, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 0, !Ref RetrainAutoscalingScheduledAction ] ] ]       
+  AutoscalingScheduledAction12: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction1Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 1, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 1, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 1, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 1, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 1, !Ref RetrainAutoscalingScheduledAction ] ] ]
+  AutoscalingScheduledAction13: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction2Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 2, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 2, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 2, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 2, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 2, !Ref RetrainAutoscalingScheduledAction ] ] ]  
+  AutoscalingScheduledAction14: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction3Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 3, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 3, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 3, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 3, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 3, !Ref RetrainAutoscalingScheduledAction ] ] ]  
+  AutoscalingScheduledAction15: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction4Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 4, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 4, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 4, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 4, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 4, !Ref RetrainAutoscalingScheduledAction ] ] ] 
+  AutoscalingScheduledAction16: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction5Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 5, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 5, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 5, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 5, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 5, !Ref RetrainAutoscalingScheduledAction ] ] ] 
+  AutoscalingScheduledAction17: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction6Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 6, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 6, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 6, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 6, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 6, !Ref RetrainAutoscalingScheduledAction ] ] ] 
+  AutoscalingScheduledAction18: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction7Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 7, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 7, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 7, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 7, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 7, !Ref RetrainAutoscalingScheduledAction ] ] ]
+  AutoscalingScheduledAction19: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction8Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 8, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 8, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 8, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 8, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 8, !Ref RetrainAutoscalingScheduledAction ] ] ] 
+  AutoscalingScheduledAction20: 
+    Type: AWS::AutoScaling::ScheduledAction
+    Condition: IsRetAutoscalingScheduledAction9Exist
+    Properties:
+      AutoScalingGroupName: !Ref RetrainAutoScalingGroupName
+      DesiredCapacity: !Select [ 0, !Split [ ':', !Select [ 9, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MinSize: !Select [ 1, !Split [ ':', !Select [ 9, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      MaxSize: !Select [ 2, !Split [ ':', !Select [ 9, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      Recurrence: !Select [ 3, !Split [ ':', !Select [ 9, !Ref RetrainAutoscalingScheduledAction ] ] ]
+      TimeZone: !Select [ 4, !Split [ ':', !Select [ 9, !Ref RetrainAutoscalingScheduledAction ] ] ]
